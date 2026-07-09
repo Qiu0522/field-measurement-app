@@ -36,19 +36,6 @@
       font-weight: bold;
     }
 
-    details { display: inline-block; vertical-align: top; margin-left: 8px; }
-    summary { cursor: pointer; font-weight: bold; }
-
-    .dataRow {
-      display: block;
-      margin: 4px 0;
-      background: #f8f8f8;
-      padding: 4px;
-      border-radius: 4px;
-    }
-
-    .dataRow input[type="text"] { width: 170px; }
-
     #drawingWrapper {
       overflow: auto;
       width: 100vw;
@@ -127,6 +114,52 @@
     }
 
     #contextMenu button:hover { background: #eee; }
+
+    #measurementModal {
+      display: none;
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      background: white;
+      border: 1px solid #999;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+      z-index: 2000;
+      padding: 14px;
+      width: 320px;
+      border-radius: 8px;
+    }
+
+    #measurementInput {
+      width: 95%;
+      font-size: 24px;
+      padding: 8px;
+      margin-bottom: 8px;
+      text-align: center;
+    }
+
+    .keypad {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+    }
+
+    .keypad button {
+      font-size: 18px;
+      padding: 10px;
+    }
+
+    .modalButtons {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .modalButtons button {
+      flex: 1;
+      padding: 10px;
+      font-size: 16px;
+    }
   </style>
 </head>
 
@@ -140,14 +173,8 @@
     <button onclick="saveWork()">Save</button>
     <button onclick="loadWork()">Load</button>
 
-    <details>
-      <summary>Add Data</summary>
-      <div id="dataList"></div>
-      <button onclick="addDataType()">+ Add Data Type</button>
-    </details>
-
     Select Data:
-    <select id="dataSelect"></select>
+    <select id="dataSelect" onchange="handleDataSelectChange()"></select>
 
     <button id="addBtn" onclick="setPointMode('add')">Add Points</button>
     <button id="lockBtn" onclick="setPointMode('lock')">🔒 Lock Points</button>
@@ -178,6 +205,43 @@
     <button onclick="contextDelete()">Delete Point</button>
   </div>
 
+  <div id="measurementModal">
+    <div id="modalTitle" style="font-weight:bold; margin-bottom:8px;">Enter Measurement</div>
+    <input id="measurementInput" type="text" inputmode="decimal" autocomplete="off">
+
+    <div class="keypad">
+      <button onclick="addKey('7')">7</button>
+      <button onclick="addKey('8')">8</button>
+      <button onclick="addKey('9')">9</button>
+      <button onclick="backspaceKey()">⌫</button>
+
+      <button onclick="addKey('4')">4</button>
+      <button onclick="addKey('5')">5</button>
+      <button onclick="addKey('6')">6</button>
+      <button onclick="addKey(' ')">Space</button>
+
+      <button onclick="addKey('1')">1</button>
+      <button onclick="addKey('2')">2</button>
+      <button onclick="addKey('3')">3</button>
+      <button onclick="addKey('/')">/</button>
+
+      <button onclick="addKey('0')">0</button>
+      <button onclick="addKey('.')">.</button>
+      <button onclick="clearMeasurement()">Clear</button>
+      <button onclick="confirmMeasurement()">OK</button>
+
+      <button onclick="addKey('1/8')">1/8</button>
+      <button onclick="addKey('1/4')">1/4</button>
+      <button onclick="addKey('3/8')">3/8</button>
+      <button onclick="addKey('1/2')">1/2</button>
+
+      <button onclick="addKey('5/8')">5/8</button>
+      <button onclick="addKey('3/4')">3/4</button>
+      <button onclick="addKey('7/8')">7/8</button>
+      <button onclick="cancelMeasurement()">Cancel</button>
+    </div>
+  </div>
+
   <script>
     let points = [];
     let pointMode = "lock";
@@ -199,6 +263,9 @@
     let dragStartX = 0;
     let dragStartY = 0;
 
+    let pendingPointPosition = null;
+    let measurementCallback = null;
+
     let dataTypes = [
       { id: "data1", name: "测量落差", color: "#0066ff", counter: 1, export: true },
       { id: "data2", name: "Embed 距离", color: "#ff0000", counter: 1, export: true },
@@ -217,13 +284,15 @@
     const drawingWrapper = document.getElementById("drawingWrapper");
     const statusText = document.getElementById("status");
     const dataSelect = document.getElementById("dataSelect");
-    const dataList = document.getElementById("dataList");
     const contextMenu = document.getElementById("contextMenu");
     const workNameInput = document.getElementById("workName");
     const penBtn = document.getElementById("penBtn");
     const eraserBtn = document.getElementById("eraserBtn");
     const addBtn = document.getElementById("addBtn");
     const lockBtn = document.getElementById("lockBtn");
+    const measurementModal = document.getElementById("measurementModal");
+    const measurementInput = document.getElementById("measurementInput");
+    const modalTitle = document.getElementById("modalTitle");
 
     pdfjsLib.GlobalWorkerOptions.workerSrc =
       "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
@@ -300,66 +369,45 @@
     }
 
     function renderDataControls() {
-      dataList.innerHTML = "";
       dataSelect.innerHTML = "";
 
       dataTypes.forEach(dt => {
-        const row = document.createElement("div");
-        row.className = "dataRow";
-
-        row.innerHTML = `
-          Export:
-          <input type="checkbox" ${dt.export ? "checked" : ""} onchange="toggleExport('${dt.id}', this.checked)">
-          Name:
-          <input type="text" value="${dt.name}" onchange="renameDataType('${dt.id}', this.value)">
-          Color:
-          <input type="color" value="${dt.color}" onchange="changeDataColor('${dt.id}', this.value)">
-        `;
-
-        dataList.appendChild(row);
-
         const option = document.createElement("option");
         option.value = dt.id;
         option.textContent = dt.name;
         dataSelect.appendChild(option);
       });
 
+      const addOption = document.createElement("option");
+      addOption.value = "__add_data_type__";
+      addOption.textContent = "+ Add Data Type";
+      dataSelect.appendChild(addOption);
+
       refreshPointStyles();
     }
 
-    function addDataType() {
-      dataTypes.push({
+    function handleDataSelectChange() {
+      if (dataSelect.value !== "__add_data_type__") return;
+
+      const name = prompt("Enter new data type name:", "New Data");
+      if (!name) {
+        dataSelect.value = dataTypes[0].id;
+        return;
+      }
+
+      const color = prompt("Enter color hex code:", "#000000") || "#000000";
+
+      const newType = {
         id: "data" + Date.now(),
-        name: "New Data",
-        color: "#000000",
+        name: name,
+        color: color,
         counter: 1,
         export: true
-      });
+      };
 
+      dataTypes.push(newType);
       renderDataControls();
-      autoSave();
-    }
-
-    function toggleExport(id, checked) {
-      const dt = getDataType(id);
-      if (dt) dt.export = checked;
-      refreshPointStyles();
-      autoSave();
-    }
-
-    function renameDataType(id, newName) {
-      const dt = getDataType(id);
-      if (!dt) return;
-      dt.name = newName || "Unnamed";
-      renderDataControls();
-      autoSave();
-    }
-
-    function changeDataColor(id, newColor) {
-      const dt = getDataType(id);
-      if (!dt) return;
-      dt.color = newColor;
-      refreshPointStyles();
+      dataSelect.value = newType.id;
       autoSave();
     }
 
@@ -385,7 +433,7 @@
       contextMenu.style.display = "none";
       document.querySelectorAll(".point").forEach(p => p.classList.remove("selected"));
 
-      if (pointMode === "add") statusText.textContent = "Add Points on. Blank tap adds points. Tap point edits measurement.";
+      if (pointMode === "add") statusText.textContent = "Add Points on. Tap drawing, enter measurement, then point is created.";
       if (pointMode === "lock") statusText.textContent = "Lock Points on. Blank tap will not add points. Pen/Eraser can still be used.";
 
       updateToolButtons();
@@ -403,10 +451,10 @@
       commentTool = tool;
       drawingArea.classList.toggle("drawActive", tool !== "none");
 
-      if (tool === "pen") statusText.textContent = "Pen active. Lock Points can stay on.";
-      if (tool === "eraser") statusText.textContent = "Eraser active. Lock Points can stay on.";
+      if (tool === "pen") statusText.textContent = "Pen active.";
+      if (tool === "eraser") statusText.textContent = "Eraser active.";
       if (tool === "none") {
-        if (pointMode === "add") statusText.textContent = "Add Points on. Blank tap adds points.";
+        if (pointMode === "add") statusText.textContent = "Add Points on. Tap drawing to enter measurement.";
         if (pointMode === "lock") statusText.textContent = "Lock Points on. Blank tap will not add points.";
       }
 
@@ -431,10 +479,17 @@
         return;
       }
 
-      if (pointMode === "add") addPoint(pos.x, pos.y);
+      if (pointMode === "add") {
+        pendingPointPosition = pos;
+        openMeasurementModal("", function(value) {
+          if (value.trim() !== "") {
+            addPoint(pos.x, pos.y, value.trim());
+          }
+        });
+      }
     });
 
-    function addPoint(x, y) {
+    function addPoint(x, y, measurement) {
       const dataId = dataSelect.value;
       const dt = getDataType(dataId);
       if (!dt) return;
@@ -445,7 +500,7 @@
         number: dt.counter,
         x,
         y,
-        measurement: "",
+        measurement: measurement || "",
         moved: false,
         moveDistance: 0
       };
@@ -457,7 +512,7 @@
       redoStack = [];
 
       createPointElement(point);
-      statusText.textContent = dt.name + " point " + point.number + " added.";
+      statusText.textContent = dt.name + " point added: " + point.measurement;
       autoSave();
     }
 
@@ -561,6 +616,59 @@
       drawingArea.appendChild(div);
     }
 
+    function openMeasurementModal(initialValue, callback) {
+      measurementInput.value = initialValue || "";
+      measurementCallback = callback;
+      measurementModal.style.display = "block";
+      setTimeout(() => measurementInput.focus(), 50);
+    }
+
+    function addKey(key) {
+      measurementInput.value += key;
+      measurementInput.focus();
+    }
+
+    function backspaceKey() {
+      measurementInput.value = measurementInput.value.slice(0, -1);
+      measurementInput.focus();
+    }
+
+    function clearMeasurement() {
+      measurementInput.value = "";
+      measurementInput.focus();
+    }
+
+    function confirmMeasurement() {
+      const value = measurementInput.value;
+      measurementModal.style.display = "none";
+      if (measurementCallback) measurementCallback(value);
+      measurementCallback = null;
+    }
+
+    function cancelMeasurement() {
+      measurementModal.style.display = "none";
+      measurementCallback = null;
+    }
+
+    function editPoint(point) {
+      const oldValue = point.measurement;
+
+      openMeasurementModal(point.measurement, function(value) {
+        point.measurement = value.trim();
+
+        undoStack.push({
+          type: "edit",
+          point,
+          oldValue,
+          newValue: point.measurement
+        });
+
+        redoStack = [];
+        updatePointElement(point);
+        autoSave();
+      });
+    }
+
     function getDrawingPos(event) {
       const rect = drawingArea.getBoundingClientRect();
       return {
@@ -603,26 +711,6 @@
     function contextDelete() {
       contextMenu.style.display = "none";
       if (contextPoint) deletePoint(contextPoint);
-    }
-
-    function editPoint(point) {
-      const oldValue = point.measurement;
-      const value = prompt("Enter measurement for point " + point.number, point.measurement);
-
-      if (value !== null) {
-        point.measurement = value.trim();
-
-        undoStack.push({
-          type: "edit",
-          point,
-          oldValue,
-          newValue: point.measurement
-        });
-
-        redoStack = [];
-        updatePointElement(point);
-        autoSave();
-      }
     }
 
     function movePoint(point, newX, newY) {
