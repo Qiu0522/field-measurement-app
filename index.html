@@ -49,7 +49,7 @@
     }
 
     .dataRow input[type="text"] {
-      width: 110px;
+      width: 170px;
     }
 
     #drawingWrapper {
@@ -57,7 +57,7 @@
       width: 100vw;
       height: calc(100vh - 95px);
       background: #f5f5f5;
-      touch-action: none;
+      touch-action: pan-x pan-y pinch-zoom;
     }
 
     #drawingArea {
@@ -81,9 +81,10 @@
       pointer-events: none;
     }
 
-    .commentMode #commentCanvas {
+    .drawActive #commentCanvas {
       pointer-events: auto;
       cursor: crosshair;
+      touch-action: none;
     }
 
     .point {
@@ -94,13 +95,14 @@
       padding: 0;
       min-width: 20px;
       text-align: center;
-      font-size: 15px;
+      font-size: 30px;
       font-weight: bold;
       cursor: pointer;
       transform: translate(-50%, -50%);
       white-space: nowrap;
       user-select: none;
       z-index: 10;
+      touch-action: none;
     }
 
     .point.selected {
@@ -159,21 +161,12 @@
 
     <button onclick="setMode('add')">Add Points</button>
     <button onclick="setMode('edit')">🔒 Edit / Lock</button>
-    <button onclick="setMode('comment')">Comment</button>
 
-    Pen:
-    <input type="color" id="penColor" value="#ff0000">
-    Size:
-    <input type="range" id="penSize" min="1" max="12" value="3">
-    <button onclick="setPenMode()">Pen</button>
-    <button onclick="setEraserMode()">Eraser</button>
-    <button onclick="clearComments()">Clear Comments</button>
+    <button onclick="setPenMode()" id="penBtn">✏️</button>
+    <button onclick="setEraserMode()" id="eraserBtn">🧽</button>
 
     <button onclick="undo()" title="Undo">↶</button>
     <button onclick="redo()" title="Redo">↷</button>
-
-    <button onclick="zoomIn()">＋</button>
-    <button onclick="zoomOut()">－</button>
 
     <button onclick="exportCSV()">Export CSV</button>
     <button onclick="exportPDF()">Export PDF</button>
@@ -207,19 +200,18 @@
     let lastCommentX = 0;
     let lastCommentY = 0;
     let commentImageData = "";
-    let commentTool = "pen";
+    let commentTool = "none";
+    let commentBeforeStroke = "";
 
     let suppressNextClick = false;
-
-    let pinchStartDistance = null;
-    let pinchStartZoom = 1;
-    let activeTouches = new Map();
+    let isDraggingPoint = false;
+    let draggedPoint = null;
 
     let dataTypes = [
-      { id: "data1", name: "Blue", color: "#0066ff", counter: 1, export: true },
-      { id: "data2", name: "Red", color: "#ff0000", counter: 1, export: true },
-      { id: "data3", name: "Green", color: "#00aa00", counter: 1, export: true },
-      { id: "data4", name: "Purple", color: "#8000ff", counter: 1, export: true }
+      { id: "data1", name: "测量落差", color: "#0066ff", counter: 1, export: true },
+      { id: "data2", name: "Embed 距离", color: "#ff0000", counter: 1, export: true },
+      { id: "data3", name: "二次测量Embed距离", color: "#00aa00", counter: 1, export: true },
+      { id: "data4", name: "完成后立柱测量尺寸", color: "#8000ff", counter: 1, export: true }
     ];
 
     let undoStack = [];
@@ -236,8 +228,8 @@
     const dataList = document.getElementById("dataList");
     const contextMenu = document.getElementById("contextMenu");
     const workNameInput = document.getElementById("workName");
-    const penColor = document.getElementById("penColor");
-    const penSize = document.getElementById("penSize");
+    const penBtn = document.getElementById("penBtn");
+    const eraserBtn = document.getElementById("eraserBtn");
 
     pdfjsLib.GlobalWorkerOptions.workerSrc =
       "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
@@ -391,13 +383,41 @@
       mode = newMode;
       movingPoint = null;
       contextMenu.style.display = "none";
-
-      drawingArea.classList.toggle("commentMode", mode === "comment");
       document.querySelectorAll(".point").forEach(p => p.classList.remove("selected"));
 
       if (mode === "add") statusText.textContent = "Add mode: tap blank drawing area to add points. Tap points to edit.";
-      if (mode === "edit") statusText.textContent = "Locked edit mode: tapping blank area will NOT add points. Tap point to edit. Right click / long press for Move or Delete.";
-      if (mode === "comment") statusText.textContent = "Comment mode: draw notes with mouse or Apple Pencil. Use Pen/Eraser.";
+      if (mode === "edit") statusText.textContent = "Locked edit mode: blank tap will NOT add points. Tap point to edit. Right click / long press for Move or Delete.";
+
+      setCommentTool("none");
+    }
+
+    function setPenMode() {
+      if (commentTool === "pen") {
+        setCommentTool("none");
+      } else {
+        setCommentTool("pen");
+      }
+    }
+
+    function setEraserMode() {
+      if (commentTool === "eraser") {
+        setCommentTool("none");
+      } else {
+        setCommentTool("eraser");
+      }
+    }
+
+    function setCommentTool(tool) {
+      commentTool = tool;
+
+      drawingArea.classList.toggle("drawActive", tool !== "none");
+
+      penBtn.style.background = tool === "pen" ? "#cce5ff" : "";
+      eraserBtn.style.background = tool === "eraser" ? "#cce5ff" : "";
+
+      if (tool === "pen") statusText.textContent = "Pen active. Draw with Apple Pencil or finger.";
+      if (tool === "eraser") statusText.textContent = "Eraser active. Erase comments.";
+      if (tool === "none" && mode !== "add") statusText.textContent = "Tool off. You can scroll/pan the drawing.";
     }
 
     drawingArea.addEventListener("click", function(event) {
@@ -407,7 +427,7 @@
       }
 
       if (event.target.classList.contains("point")) return;
-      if (mode === "comment") return;
+      if (commentTool !== "none") return;
 
       const rect = drawingArea.getBoundingClientRect();
       const x = (event.clientX - rect.left) / zoomLevel;
@@ -467,7 +487,7 @@
 
       div.onclick = function(event) {
         event.stopPropagation();
-        if (mode !== "comment") editPoint(point);
+        if (!isDraggingPoint && commentTool === "none") editPoint(point);
       };
 
       div.oncontextmenu = function(event) {
@@ -475,6 +495,54 @@
         event.stopPropagation();
         showContextMenu(event.clientX, event.clientY, point);
       };
+
+      div.addEventListener("pointerdown", function(event) {
+        if (movingPoint !== point) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        isDraggingPoint = true;
+        draggedPoint = point;
+        div.setPointerCapture(event.pointerId);
+      });
+
+      div.addEventListener("pointermove", function(event) {
+        if (!isDraggingPoint || draggedPoint !== point) return;
+
+        event.preventDefault();
+        const pos = getDrawingPos(event);
+        point.x = pos.x;
+        point.y = pos.y;
+        point.moved = true;
+        updatePointElement(point);
+      });
+
+      div.addEventListener("pointerup", function(event) {
+        if (!isDraggingPoint || draggedPoint !== point) return;
+
+        event.preventDefault();
+
+        isDraggingPoint = false;
+        draggedPoint = null;
+        movingPoint = null;
+
+        point.moveDistance += 999;
+
+        undoStack.push({
+          type: "move",
+          point,
+          oldX: point.x,
+          oldY: point.y,
+          newX: point.x,
+          newY: point.y,
+          distance: 999
+        });
+
+        redoStack = [];
+        setMode("edit");
+        autoSave();
+      });
 
       let pressTimer = null;
 
@@ -495,6 +563,14 @@
       });
 
       drawingArea.appendChild(div);
+    }
+
+    function getDrawingPos(event) {
+      const rect = drawingArea.getBoundingClientRect();
+      return {
+        x: (event.clientX - rect.left) / zoomLevel,
+        y: (event.clientY - rect.top) / zoomLevel
+      };
     }
 
     function showContextMenu(x, y, point) {
@@ -521,12 +597,13 @@
 
       movingPoint = contextPoint;
       mode = "edit";
+      setCommentTool("none");
 
       document.querySelectorAll(".point").forEach(p => p.classList.remove("selected"));
       const element = document.querySelector(`[data-uid="${contextPoint.uid}"]`);
       if (element) element.classList.add("selected");
 
-      statusText.textContent = "Move selected point: tap the new location. Blank tap will move, NOT add new point.";
+      statusText.textContent = "Move selected point: drag it with one finger/mouse.";
     }
 
     function contextDelete() {
@@ -605,7 +682,6 @@
       element.style.top = point.y + "px";
       element.style.color = dt ? dt.color : "black";
       element.style.display = dt && dt.export ? "block" : "none";
-      element.classList.remove("selected");
     }
 
     function removePointElement(uid) {
@@ -633,16 +709,13 @@
         updatePointElement(action.point);
       }
 
-      if (action.type === "move") {
-        action.point.x = action.oldX;
-        action.point.y = action.oldY;
-        action.point.moveDistance = Math.max(0, action.point.moveDistance - action.distance);
-        updatePointElement(action.point);
-      }
-
       if (action.type === "delete") {
         points.push(action.point);
         createPointElement(action.point);
+      }
+
+      if (action.type === "comment") {
+        restoreCommentImage(action.before);
       }
 
       redoStack.push(action);
@@ -665,38 +738,17 @@
         updatePointElement(action.point);
       }
 
-      if (action.type === "move") {
-        action.point.x = action.newX;
-        action.point.y = action.newY;
-        action.point.moved = true;
-        action.point.moveDistance += action.distance;
-        updatePointElement(action.point);
-      }
-
       if (action.type === "delete") {
         points = points.filter(p => p.uid !== action.point.uid);
         removePointElement(action.point.uid);
       }
 
+      if (action.type === "comment") {
+        restoreCommentImage(action.after);
+      }
+
       undoStack.push(action);
       autoSave();
-    }
-
-    function zoomIn() {
-      zoomLevel += 0.1;
-      applyZoom();
-    }
-
-    function zoomOut() {
-      if (zoomLevel > 0.3) {
-        zoomLevel -= 0.1;
-        applyZoom();
-      }
-    }
-
-    function applyZoom() {
-      drawingArea.style.transform = "scale(" + zoomLevel + ")";
-      statusText.textContent = "Zoom: " + Math.round(zoomLevel * 100) + "%";
     }
 
     drawingWrapper.addEventListener("wheel", function(event) {
@@ -713,40 +765,9 @@
       applyZoom();
     }, { passive: false });
 
-    drawingWrapper.addEventListener("pointerdown", function(event) {
-      activeTouches.set(event.pointerId, event);
-      if (activeTouches.size === 2) {
-        const touches = Array.from(activeTouches.values());
-        pinchStartDistance = getPointerDistance(touches[0], touches[1]);
-        pinchStartZoom = zoomLevel;
-      }
-    });
-
-    drawingWrapper.addEventListener("pointermove", function(event) {
-      if (!activeTouches.has(event.pointerId)) return;
-
-      activeTouches.set(event.pointerId, event);
-
-      if (activeTouches.size === 2 && pinchStartDistance) {
-        const touches = Array.from(activeTouches.values());
-        const currentDistance = getPointerDistance(touches[0], touches[1]);
-        zoomLevel = Math.max(0.3, Math.min(5, pinchStartZoom * (currentDistance / pinchStartDistance)));
-        applyZoom();
-      }
-    });
-
-    drawingWrapper.addEventListener("pointerup", function(event) {
-      activeTouches.delete(event.pointerId);
-      if (activeTouches.size < 2) pinchStartDistance = null;
-    });
-
-    drawingWrapper.addEventListener("pointercancel", function(event) {
-      activeTouches.delete(event.pointerId);
-      if (activeTouches.size < 2) pinchStartDistance = null;
-    });
-
-    function getPointerDistance(a, b) {
-      return Math.sqrt(Math.pow(a.clientX - b.clientX, 2) + Math.pow(a.clientY - b.clientY, 2));
+    function applyZoom() {
+      drawingArea.style.transform = "scale(" + zoomLevel + ")";
+      statusText.textContent = "Zoom: " + Math.round(zoomLevel * 100) + "%";
     }
 
     function cleanCSV(value) {
@@ -840,46 +861,38 @@
       });
     }
 
-    function setPenMode() {
-      commentTool = "pen";
-      statusText.textContent = "Comment tool: Pen";
-    }
-
-    function setEraserMode() {
-      commentTool = "eraser";
-      statusText.textContent = "Comment tool: Eraser";
-    }
-
     commentCanvas.addEventListener("pointerdown", function(event) {
-      if (mode !== "comment") return;
+      if (commentTool === "none") return;
 
       event.preventDefault();
       commentCanvas.setPointerCapture(event.pointerId);
 
+      commentBeforeStroke = commentCanvas.toDataURL();
       isDrawingComment = true;
+
       const pos = getCanvasPos(event);
       lastCommentX = pos.x;
       lastCommentY = pos.y;
     });
 
     commentCanvas.addEventListener("pointermove", function(event) {
-      if (!isDrawingComment || mode !== "comment") return;
+      if (!isDrawingComment || commentTool === "none") return;
 
       event.preventDefault();
 
       const pos = getCanvasPos(event);
       const ctx = commentCanvas.getContext("2d");
 
-      ctx.lineWidth = Number(penSize.value);
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
 
       if (commentTool === "eraser") {
         ctx.globalCompositeOperation = "destination-out";
-        ctx.lineWidth = Number(penSize.value) * 4;
+        ctx.lineWidth = 30;
       } else {
         ctx.globalCompositeOperation = "source-over";
-        ctx.strokeStyle = penColor.value;
+        ctx.strokeStyle = "#ff0000";
+        ctx.lineWidth = 5;
       }
 
       ctx.beginPath();
@@ -891,21 +904,25 @@
       lastCommentY = pos.y;
     });
 
-    commentCanvas.addEventListener("pointerup", function() {
-      if (isDrawingComment) {
-        isDrawingComment = false;
-        commentImageData = commentCanvas.toDataURL();
-        autoSave();
-      }
-    });
+    commentCanvas.addEventListener("pointerup", finishCommentStroke);
+    commentCanvas.addEventListener("pointerleave", finishCommentStroke);
 
-    commentCanvas.addEventListener("pointerleave", function() {
-      if (isDrawingComment) {
-        isDrawingComment = false;
-        commentImageData = commentCanvas.toDataURL();
-        autoSave();
-      }
-    });
+    function finishCommentStroke() {
+      if (!isDrawingComment) return;
+
+      isDrawingComment = false;
+      const after = commentCanvas.toDataURL();
+
+      undoStack.push({
+        type: "comment",
+        before: commentBeforeStroke,
+        after: after
+      });
+
+      redoStack = [];
+      commentImageData = after;
+      autoSave();
+    }
 
     function getCanvasPos(event) {
       const rect = commentCanvas.getBoundingClientRect();
@@ -915,13 +932,21 @@
       };
     }
 
-    function clearComments() {
-      if (!confirm("Clear all comments?")) return;
-
+    function restoreCommentImage(dataURL) {
       const ctx = commentCanvas.getContext("2d");
       ctx.clearRect(0, 0, commentCanvas.width, commentCanvas.height);
-      commentImageData = "";
-      autoSave();
+
+      if (!dataURL) {
+        commentImageData = "";
+        return;
+      }
+
+      const img = new Image();
+      img.onload = function() {
+        ctx.drawImage(img, 0, 0);
+        commentImageData = dataURL;
+      };
+      img.src = dataURL;
     }
 
     function getWorkKey() {
@@ -975,11 +1000,7 @@
       points.forEach(createPointElement);
 
       if (commentImageData && commentCanvas.width > 0) {
-        const img = new Image();
-        img.onload = function() {
-          commentCanvas.getContext("2d").drawImage(img, 0, 0);
-        };
-        img.src = commentImageData;
+        restoreCommentImage(commentImageData);
       }
 
       statusText.textContent = "Loaded saved work. Open the same PDF/image if drawing is blank.";
