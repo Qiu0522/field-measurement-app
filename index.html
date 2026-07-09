@@ -18,12 +18,18 @@
       position: sticky;
       top: 0;
       z-index: 10;
+      font-size: 13px;
+    }
+
+    #toolbar input[type="text"] {
+      width: 80px;
+      margin-right: 6px;
     }
 
     #drawingWrapper {
       overflow: auto;
       width: 100vw;
-      height: calc(100vh - 60px);
+      height: calc(100vh - 70px);
       background: #f5f5f5;
     }
 
@@ -42,28 +48,28 @@
 
     .point {
       position: absolute;
-      min-width: 22px;
-      height: 14px;
-      padding: 1px 4px;
-      border-radius: 7px;
-      color: white;
+      background: transparent;
+      border: none;
+      outline: none;
+      padding: 0;
+      min-width: 20px;
       text-align: center;
-      line-height: 14px;
-      font-size: 8px;
+      font-size: 10px;
       font-weight: bold;
       cursor: pointer;
       transform: translate(-50%, -50%);
-      border: 1px solid white;
       white-space: nowrap;
     }
 
-    .blue { background: blue; }
-    .red { background: red; }
-    .green { background: green; }
-    .purple { background: purple; }
+    .blue { color: blue; }
+    .red { color: red; }
+    .green { color: green; }
+    .purple { color: purple; }
 
     .done {
-      outline: 2px solid black;
+      background: transparent;
+      border: none;
+      outline: none;
     }
   </style>
 </head>
@@ -72,6 +78,18 @@
 
   <div id="toolbar">
     <input type="file" id="fileInput" accept="image/*,.pdf">
+
+    Blue name:
+    <input type="text" id="blueName" value="Blue">
+
+    Red name:
+    <input type="text" id="redName" value="Red">
+
+    Green name:
+    <input type="text" id="greenName" value="Green">
+
+    Purple name:
+    <input type="text" id="purpleName" value="Purple">
 
     <select id="pointColor">
       <option value="blue">Blue</option>
@@ -160,7 +178,7 @@
         pdfjsLib.getDocument(typedArray).promise
           .then(pdf => pdf.getPage(1))
           .then(page => {
-            const scale = 2;
+            const scale = 3;
             const viewport = page.getViewport({ scale: scale });
 
             const context = pdfCanvas.getContext("2d");
@@ -242,12 +260,6 @@
           point.measurement = value.trim();
           div.textContent = point.measurement || point.number;
 
-          if (point.measurement !== "") {
-            div.classList.add("done");
-          } else {
-            div.classList.remove("done");
-          }
-
           undoStack.push({
             type: "edit",
             point: point,
@@ -308,12 +320,6 @@
       if (!element) return;
 
       element.textContent = point.measurement || point.number;
-
-      if (point.measurement !== "") {
-        element.classList.add("done");
-      } else {
-        element.classList.remove("done");
-      }
     }
 
     function zoomIn() {
@@ -331,6 +337,15 @@
     function applyZoom() {
       drawingArea.style.transform = "scale(" + zoomLevel + ")";
       statusText.textContent = "Zoom: " + Math.round(zoomLevel * 100) + "%";
+    }
+
+    function getCategoryName(color) {
+      const input = document.getElementById(color + "Name");
+      return input ? input.value || color : color;
+    }
+
+    function cleanCSV(value) {
+      return '"' + String(value || "").replace(/"/g, '""') + '"';
     }
 
     function exportCSV() {
@@ -361,7 +376,15 @@
         grouped.purple.length
       );
 
-      let csv = "Blue Seq,Blue Measurement,Red Seq,Red Measurement,Green Seq,Green Measurement,Purple Seq,Purple Measurement\n";
+      let headers = [];
+
+      colors.forEach(color => {
+        const name = getCategoryName(color);
+        headers.push(name + " Seq");
+        headers.push(name + " Measurement");
+      });
+
+      let csv = headers.map(cleanCSV).join(",") + "\n";
 
       for (let i = 0; i < maxRows; i++) {
         const row = [];
@@ -371,14 +394,14 @@
 
           if (p) {
             row.push(p.number);
-            row.push('"' + p.measurement + '"');
+            row.push(p.measurement);
           } else {
             row.push("");
             row.push("");
           }
         });
 
-        csv += row.join(",") + "\n";
+        csv += row.map(cleanCSV).join(",") + "\n";
       }
 
       const blob = new Blob([csv], { type: "text/csv" });
@@ -407,7 +430,7 @@
         margin: 0,
         filename: fileName,
         image: { type: "jpeg", quality: 1 },
-        html2canvas: { scale: 2 },
+        html2canvas: { scale: 4 },
         jsPDF: {
           unit: "px",
           format: [drawingArea.offsetWidth, drawingArea.offsetHeight],
