@@ -325,30 +325,64 @@
       statusText.textContent = "Zoom: " + Math.round(zoomLevel * 100) + "%";
     }
 
-    function exportCSV() {
-      let fileName = prompt("Enter CSV file name:", "measurements");
-      if (!fileName) return;
+function exportCSV() {
+  let fileName = prompt("Enter CSV file name:", "measurements");
+  if (!fileName) return;
 
-      if (!fileName.endsWith(".csv")) {
-        fileName += ".csv";
+  if (!fileName.endsWith(".csv")) {
+    fileName += ".csv";
+  }
+
+  const colors = ["blue", "red", "green", "purple"];
+
+  const grouped = {
+    blue: [],
+    red: [],
+    green: [],
+    purple: []
+  };
+
+  points.forEach(p => {
+    grouped[p.color].push(p);
+  });
+
+  const maxRows = Math.max(
+    grouped.blue.length,
+    grouped.red.length,
+    grouped.green.length,
+    grouped.purple.length
+  );
+
+  let csv = "Blue Seq,Blue Measurement,Red Seq,Red Measurement,Green Seq,Green Measurement,Purple Seq,Purple Measurement\n";
+
+  for (let i = 0; i < maxRows; i++) {
+    const row = [];
+
+    colors.forEach(color => {
+      const p = grouped[color][i];
+
+      if (p) {
+        row.push(p.number);
+        row.push(p.measurement);
+      } else {
+        row.push("");
+        row.push("");
       }
+    });
 
-      let csv = "Color,Sequence,Measurement\n";
+    csv += row.join(",") + "\n";
+  }
 
-      points.forEach(p => {
-        csv += p.color + "," + p.number + "," + p.measurement + "\n";
-      });
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
 
-      const blob = new Blob([csv], { type: "text/csv" });
-      const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  a.click();
 
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = fileName;
-      a.click();
-
-      URL.revokeObjectURL(url);
-    }
+  URL.revokeObjectURL(url);
+}
 
     function clearAll() {
       points = [];
