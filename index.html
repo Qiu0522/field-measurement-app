@@ -2,7 +2,6 @@
 <html>
 <head>
   <title>Field Measurement App</title>
-
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 
   <style>
@@ -19,34 +18,47 @@
       z-index: 10;
     }
 
+    #drawingWrapper {
+      overflow: auto;
+      width: 100vw;
+      height: calc(100vh - 60px);
+      background: #f5f5f5;
+    }
+
     #drawingArea {
       position: relative;
       display: inline-block;
-      border: 1px solid #ccc;
+      transform-origin: top left;
       margin: 10px;
+      border: 1px solid #ccc;
     }
 
     #drawing, #pdfCanvas {
       display: block;
-      max-width: none;
     }
 
     .point {
       position: absolute;
-      width: 26px;
-      height: 26px;
-      background: red;
+      width: 16px;
+      height: 16px;
       border-radius: 50%;
       color: white;
       text-align: center;
-      line-height: 26px;
-      font-size: 12px;
+      line-height: 16px;
+      font-size: 9px;
+      font-weight: bold;
       cursor: pointer;
       transform: translate(-50%, -50%);
+      border: 1px solid white;
     }
 
+    .blue { background: blue; }
+    .red { background: red; }
+    .green { background: green; }
+    .purple { background: purple; }
+
     .done {
-      background: green;
+      outline: 2px solid black;
     }
   </style>
 </head>
@@ -55,26 +67,52 @@
 
   <div id="toolbar">
     <input type="file" id="fileInput" accept="image/*,.pdf">
+
+    <select id="pointColor">
+      <option value="blue">Blue</option>
+      <option value="red">Red</option>
+      <option value="green">Green</option>
+      <option value="purple">Purple</option>
+    </select>
+
     <button onclick="addPointMode()">Add Points</button>
+    <button onclick="undo()">Undo</button>
+    <button onclick="redo()">Redo</button>
+    <button onclick="zoomIn()">Zoom In</button>
+    <button onclick="zoomOut()">Zoom Out</button>
     <button onclick="exportCSV()">Export CSV</button>
+
     <span id="status">Choose a PDF or image first.</span>
   </div>
 
-  <div id="drawingArea">
-    <img id="drawing" style="display:none;">
-    <canvas id="pdfCanvas" style="display:none;"></canvas>
+  <div id="drawingWrapper">
+    <div id="drawingArea">
+      <img id="drawing" style="display:none;">
+      <canvas id="pdfCanvas" style="display:none;"></canvas>
+    </div>
   </div>
 
   <script>
     let points = [];
     let addingPoints = false;
-    let nextPointId = 1;
+    let zoomLevel = 1;
+
+    let counters = {
+      blue: 1,
+      red: 1,
+      green: 1,
+      purple: 1
+    };
+
+    let undoStack = [];
+    let redoStack = [];
 
     const fileInput = document.getElementById("fileInput");
     const drawing = document.getElementById("drawing");
     const pdfCanvas = document.getElementById("pdfCanvas");
     const drawingArea = document.getElementById("drawingArea");
     const statusText = document.getElementById("status");
+    const pointColorSelect = document.getElementById("pointColor");
 
     pdfjsLib.GlobalWorkerOptions.workerSrc =
       "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
@@ -83,7 +121,7 @@
       const file = event.target.files[0];
       if (!file) return;
 
-      clearOldPoints();
+      clearAll();
 
       if (file.type === "application/pdf") {
         loadPDF(file);
@@ -101,7 +139,7 @@
         drawing.src = e.target.result;
         drawing.style.display = "block";
         pdfCanvas.style.display = "none";
-        statusText.textContent = "Image loaded. Click Add Points to start.";
+        statusText.textContent = "Image loaded. Click Add Points.";
       };
 
       reader.readAsDataURL(file);
@@ -113,41 +151,34 @@
       reader.onload = function(e) {
         const typedArray = new Uint8Array(e.target.result);
 
-        pdfjsLib.getDocument(typedArray).promise.then(function(pdf) {
-          return pdf.getPage(1);
-        }).then(function(page) {
-          const scale = 2;
-          const viewport = page.getViewport({ scale: scale });
+        pdfjsLib.getDocument(typedArray).promise
+          .then(pdf => pdf.getPage(1))
+          .then(page => {
+            const scale = 2;
+            const viewport = page.getViewport({ scale: scale });
 
-          const context = pdfCanvas.getContext("2d");
-          pdfCanvas.width = viewport.width;
-          pdfCanvas.height = viewport.height;
+            const context = pdfCanvas.getContext("2d");
+            pdfCanvas.width = viewport.width;
+            pdfCanvas.height = viewport.height;
 
-          drawing.style.display = "none";
-          pdfCanvas.style.display = "block";
+            drawing.style.display = "none";
+            pdfCanvas.style.display = "block";
 
-          page.render({
-            canvasContext: context,
-            viewport: viewport
+            page.render({
+              canvasContext: context,
+              viewport: viewport
+            });
+
+            statusText.textContent = "PDF page 1 loaded. Click Add Points.";
           });
-
-          statusText.textContent = "PDF page 1 loaded. Click Add Points to start.";
-        });
       };
 
       reader.readAsArrayBuffer(file);
     }
 
-    function clearOldPoints() {
-      points = [];
-      nextPointId = 1;
-
-      document.querySelectorAll(".point").forEach(p => p.remove());
-    }
-
     function addPointMode() {
       addingPoints = true;
-      statusText.textContent = "Tap on the drawing to add points.";
+      statusText.textContent = "Add mode: tap drawing to add selected color points.";
     }
 
     drawingArea.addEventListener("click", function(event) {
@@ -155,56 +186,157 @@
       if (event.target.classList.contains("point")) return;
 
       const rect = drawingArea.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
+
+      const x = (event.clientX - rect.left) / zoomLevel;
+      const y = (event.clientY - rect.top) / zoomLevel;
+
+      const color = pointColorSelect.value;
+      const number = counters[color];
 
       const point = {
-        id: nextPointId,
+        uid: Date.now() + Math.random(),
+        color: color,
+        number: number,
         x: x,
         y: y,
         measurement: ""
       };
 
       points.push(point);
+      counters[color]++;
+
+      undoStack.push({ type: "add", point: point });
+      redoStack = [];
+
       createPointElement(point);
-      nextPointId++;
+
+      statusText.textContent = color + " point " + number + " added.";
     });
 
     function createPointElement(point) {
       const div = document.createElement("div");
 
-      div.className = "point";
-      div.textContent = point.id;
+      div.className = "point " + point.color;
+      div.textContent = point.number;
+      div.dataset.uid = point.uid;
+
       div.style.left = point.x + "px";
       div.style.top = point.y + "px";
 
       div.onclick = function(event) {
         event.stopPropagation();
 
-        const value = prompt("Enter measurement for point " + point.id, point.measurement);
+        const oldValue = point.measurement;
 
-        if (value !== null && value.trim() !== "") {
+        const value = prompt(
+          "Enter measurement for " + point.color + " point " + point.number,
+          point.measurement
+        );
+
+        if (value !== null) {
           point.measurement = value.trim();
-          div.classList.add("done");
+
+          if (point.measurement !== "") {
+            div.classList.add("done");
+          } else {
+            div.classList.remove("done");
+          }
+
+          undoStack.push({
+            type: "edit",
+            point: point,
+            oldValue: oldValue,
+            newValue: point.measurement
+          });
+
+          redoStack = [];
         }
       };
 
       drawingArea.appendChild(div);
     }
 
+    function undo() {
+      const action = undoStack.pop();
+      if (!action) return;
+
+      if (action.type === "add") {
+        points = points.filter(p => p.uid !== action.point.uid);
+        removePointElement(action.point.uid);
+        counters[action.point.color]--;
+      }
+
+      if (action.type === "edit") {
+        action.point.measurement = action.oldValue;
+        updatePointElement(action.point);
+      }
+
+      redoStack.push(action);
+    }
+
+    function redo() {
+      const action = redoStack.pop();
+      if (!action) return;
+
+      if (action.type === "add") {
+        points.push(action.point);
+        counters[action.point.color]++;
+        createPointElement(action.point);
+      }
+
+      if (action.type === "edit") {
+        action.point.measurement = action.newValue;
+        updatePointElement(action.point);
+      }
+
+      undoStack.push(action);
+    }
+
+    function removePointElement(uid) {
+      const element = document.querySelector(`[data-uid="${uid}"]`);
+      if (element) element.remove();
+    }
+
+    function updatePointElement(point) {
+      const element = document.querySelector(`[data-uid="${point.uid}"]`);
+      if (!element) return;
+
+      if (point.measurement !== "") {
+        element.classList.add("done");
+      } else {
+        element.classList.remove("done");
+      }
+    }
+
+    function zoomIn() {
+      zoomLevel += 0.1;
+      applyZoom();
+    }
+
+    function zoomOut() {
+      if (zoomLevel > 0.3) {
+        zoomLevel -= 0.1;
+        applyZoom();
+      }
+    }
+
+    function applyZoom() {
+      drawingArea.style.transform = "scale(" + zoomLevel + ")";
+      statusText.textContent = "Zoom: " + Math.round(zoomLevel * 100) + "%";
+    }
+
     function exportCSV() {
       let fileName = prompt("Enter CSV file name:", "measurements");
-
       if (!fileName) return;
 
       if (!fileName.endsWith(".csv")) {
         fileName += ".csv";
       }
 
-      let csv = "Sequence,Measurement\n";
+      let csv = "Color,Sequence,Measurement\n";
 
       points.forEach(p => {
-        csv += p.id + "," + p.measurement + "\n";
+        csv += p.color + "," + p.number + "," + p.measurement + "\n";
       });
 
       const blob = new Blob([csv], { type: "text/csv" });
@@ -216,6 +348,22 @@
       a.click();
 
       URL.revokeObjectURL(url);
+    }
+
+    function clearAll() {
+      points = [];
+      counters = {
+        blue: 1,
+        red: 1,
+        green: 1,
+        purple: 1
+      };
+      undoStack = [];
+      redoStack = [];
+      zoomLevel = 1;
+      drawingArea.style.transform = "scale(1)";
+
+      document.querySelectorAll(".point").forEach(p => p.remove());
     }
   </script>
 
