@@ -2,41 +2,25 @@
 <html>
 <head>
   <title>Field Measurement App</title>
-
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
   <style>
-    body {
-      font-family: Arial;
-      margin: 0;
-    }
+    body { font-family: Arial; margin: 0; }
 
     #toolbar {
       padding: 10px;
       background: #eee;
       position: sticky;
       top: 0;
-      z-index: 10;
+      z-index: 20;
       font-size: 13px;
       line-height: 28px;
     }
 
-    button, select, input {
-      margin: 2px;
-      font-size: 13px;
-    }
-
-    details {
-      display: inline-block;
-      vertical-align: top;
-      margin-left: 8px;
-    }
-
-    summary {
-      cursor: pointer;
-      font-weight: bold;
-    }
+    button, select, input { margin: 2px; font-size: 13px; }
+    details { display: inline-block; vertical-align: top; margin-left: 8px; }
+    summary { cursor: pointer; font-weight: bold; }
 
     .dataRow {
       display: block;
@@ -46,14 +30,12 @@
       border-radius: 4px;
     }
 
-    .dataRow input[type="text"] {
-      width: 110px;
-    }
+    .dataRow input[type="text"] { width: 110px; }
 
     #drawingWrapper {
       overflow: auto;
       width: 100vw;
-      height: calc(100vh - 90px);
+      height: calc(100vh - 95px);
       background: #f5f5f5;
     }
 
@@ -66,8 +48,21 @@
       background: white;
     }
 
-    #drawing, #pdfCanvas {
+    #drawing, #pdfCanvas, #commentCanvas {
       display: block;
+    }
+
+    #commentCanvas {
+      position: absolute;
+      left: 0;
+      top: 0;
+      z-index: 5;
+      pointer-events: none;
+    }
+
+    .commentMode #commentCanvas {
+      pointer-events: auto;
+      cursor: crosshair;
     }
 
     .point {
@@ -84,16 +79,36 @@
       transform: translate(-50%, -50%);
       white-space: nowrap;
       user-select: none;
+      z-index: 10;
     }
 
-    .point.selected {
-      text-decoration: underline;
-    }
+    .point.selected { text-decoration: underline; }
 
     #status {
       margin-left: 10px;
       font-weight: bold;
     }
+
+    #contextMenu {
+      position: fixed;
+      display: none;
+      background: white;
+      border: 1px solid #aaa;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+      z-index: 999;
+      padding: 4px;
+    }
+
+    #contextMenu button {
+      display: block;
+      width: 120px;
+      text-align: left;
+      background: white;
+      border: none;
+      padding: 8px;
+    }
+
+    #contextMenu button:hover { background: #eee; }
   </style>
 </head>
 
@@ -101,6 +116,11 @@
 
   <div id="toolbar">
     <input type="file" id="fileInput" accept="image/*,.pdf">
+
+    Work File:
+    <input type="text" id="workName" value="Project_Level" style="width:120px;">
+    <button onclick="saveWork()">Save</button>
+    <button onclick="loadWork()">Load</button>
 
     <details>
       <summary>Add Data</summary>
@@ -113,8 +133,8 @@
 
     <button onclick="setMode('add')">Add Points</button>
     <button onclick="setMode('edit')">Select/Edit</button>
-    <button onclick="setMode('move')">Move</button>
-    <button onclick="setMode('delete')">Delete</button>
+    <button onclick="setMode('comment')">Comment</button>
+    <button onclick="clearComments()">Clear Comments</button>
 
     <button onclick="undo()" title="Undo">↶</button>
     <button onclick="redo()" title="Redo">↷</button>
@@ -132,21 +152,33 @@
     <div id="drawingArea">
       <img id="drawing" style="display:none;">
       <canvas id="pdfCanvas" style="display:none;"></canvas>
+      <canvas id="commentCanvas"></canvas>
     </div>
+  </div>
+
+  <div id="contextMenu">
+    <button onclick="contextEdit()">Edit Measurement</button>
+    <button onclick="contextMove()">Move Point</button>
+    <button onclick="contextDelete()">Delete Point</button>
   </div>
 
   <script>
     let points = [];
     let mode = "edit";
     let zoomLevel = 1;
-    let selectedPoint = null;
     let movingPoint = null;
+    let contextPoint = null;
+    let currentFileName = "";
+    let isDrawingComment = false;
+    let lastCommentX = 0;
+    let lastCommentY = 0;
+    let commentImageData = "";
 
     let dataTypes = [
-      { id: "data1", name: "Blue", color: "#0066ff", counter: 1 },
-      { id: "data2", name: "Red", color: "#ff0000", counter: 1 },
-      { id: "data3", name: "Green", color: "#00aa00", counter: 1 },
-      { id: "data4", name: "Purple", color: "#8000ff", counter: 1 }
+      { id: "data1", name: "Blue", color: "#0066ff", counter: 1, export: true },
+      { id: "data2", name: "Red", color: "#ff0000", counter: 1, export: true },
+      { id: "data3", name: "Green", color: "#00aa00", counter: 1, export: true },
+      { id: "data4", name: "Purple", color: "#8000ff", counter: 1, export: true }
     ];
 
     let undoStack = [];
@@ -155,10 +187,13 @@
     const fileInput = document.getElementById("fileInput");
     const drawing = document.getElementById("drawing");
     const pdfCanvas = document.getElementById("pdfCanvas");
+    const commentCanvas = document.getElementById("commentCanvas");
     const drawingArea = document.getElementById("drawingArea");
     const statusText = document.getElementById("status");
     const dataSelect = document.getElementById("dataSelect");
     const dataList = document.getElementById("dataList");
+    const contextMenu = document.getElementById("contextMenu");
+    const workNameInput = document.getElementById("workName");
 
     pdfjsLib.GlobalWorkerOptions.workerSrc =
       "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
@@ -169,41 +204,40 @@
       const file = event.target.files[0];
       if (!file) return;
 
+      currentFileName = file.name;
+      workNameInput.value = file.name.replace(/\.[^/.]+$/, "");
       clearAllPoints();
 
-      if (file.type === "application/pdf") {
-        loadPDF(file);
-      } else if (file.type.startsWith("image/")) {
-        loadImage(file);
-      } else {
-        alert("Please choose a PDF or image file.");
-      }
+      if (file.type === "application/pdf") loadPDF(file);
+      else if (file.type.startsWith("image/")) loadImage(file);
+      else alert("Please choose a PDF or image file.");
     });
 
     function loadImage(file) {
       const reader = new FileReader();
-
       reader.onload = function(e) {
+        drawing.onload = function() {
+          setupCommentCanvas(drawing.naturalWidth, drawing.naturalHeight);
+        };
+
         drawing.src = e.target.result;
         drawing.style.display = "block";
         pdfCanvas.style.display = "none";
         statusText.textContent = "Image loaded.";
       };
-
       reader.readAsDataURL(file);
     }
 
     function loadPDF(file) {
       const reader = new FileReader();
-
       reader.onload = function(e) {
         const typedArray = new Uint8Array(e.target.result);
 
         pdfjsLib.getDocument(typedArray).promise
           .then(pdf => pdf.getPage(1))
           .then(page => {
-            const scale = 4;
-            const viewport = page.getViewport({ scale: scale });
+            const scale = 5;
+            const viewport = page.getViewport({ scale });
 
             const context = pdfCanvas.getContext("2d");
             pdfCanvas.width = viewport.width;
@@ -212,16 +246,28 @@
             drawing.style.display = "none";
             pdfCanvas.style.display = "block";
 
-            page.render({
-              canvasContext: context,
-              viewport: viewport
-            });
+            page.render({ canvasContext: context, viewport });
 
+            setupCommentCanvas(viewport.width, viewport.height);
             statusText.textContent = "PDF page 1 loaded. High clarity mode.";
           });
       };
-
       reader.readAsArrayBuffer(file);
+    }
+
+    function setupCommentCanvas(width, height) {
+      commentCanvas.width = width;
+      commentCanvas.height = height;
+      commentCanvas.style.width = width + "px";
+      commentCanvas.style.height = height + "px";
+
+      if (commentImageData) {
+        const img = new Image();
+        img.onload = function() {
+          commentCanvas.getContext("2d").drawImage(img, 0, 0);
+        };
+        img.src = commentImageData;
+      }
     }
 
     function renderDataControls() {
@@ -233,6 +279,8 @@
         row.className = "dataRow";
 
         row.innerHTML = `
+          Export:
+          <input type="checkbox" ${dt.export ? "checked" : ""} onchange="toggleExport('${dt.id}', this.checked)">
           Name:
           <input type="text" value="${dt.name}" onchange="renameDataType('${dt.id}', this.value)">
           Color:
@@ -251,15 +299,21 @@
     }
 
     function addDataType() {
-      const id = "data" + Date.now();
       dataTypes.push({
-        id: id,
+        id: "data" + Date.now(),
         name: "New Data",
         color: "#000000",
-        counter: 1
+        counter: 1,
+        export: true
       });
-
       renderDataControls();
+      autoSave();
+    }
+
+    function toggleExport(id, checked) {
+      const dt = getDataType(id);
+      if (dt) dt.export = checked;
+      autoSave();
     }
 
     function renameDataType(id, newName) {
@@ -267,6 +321,7 @@
       if (!dt) return;
       dt.name = newName || "Unnamed";
       renderDataControls();
+      autoSave();
     }
 
     function changeDataColor(id, newColor) {
@@ -274,6 +329,7 @@
       if (!dt) return;
       dt.color = newColor;
       refreshPointStyles();
+      autoSave();
     }
 
     function getDataType(id) {
@@ -282,28 +338,27 @@
 
     function setMode(newMode) {
       mode = newMode;
-      selectedPoint = null;
       movingPoint = null;
+      contextMenu.style.display = "none";
+      drawingArea.classList.toggle("commentMode", mode === "comment");
       document.querySelectorAll(".point").forEach(p => p.classList.remove("selected"));
 
       if (mode === "add") statusText.textContent = "Add mode: tap drawing to add points.";
-      if (mode === "edit") statusText.textContent = "Edit mode: tap point to enter measurement.";
-      if (mode === "move") statusText.textContent = "Move mode: tap point, then tap new location.";
-      if (mode === "delete") statusText.textContent = "Delete mode: tap point to delete.";
+      if (mode === "edit") statusText.textContent = "Edit mode: tap point to enter measurement. Right click / long press for Move or Delete.";
+      if (mode === "comment") statusText.textContent = "Comment mode: draw notes with mouse or Apple Pencil. This will not affect CSV.";
     }
 
     drawingArea.addEventListener("click", function(event) {
       if (event.target.classList.contains("point")) return;
+      if (mode === "comment") return;
 
       const rect = drawingArea.getBoundingClientRect();
       const x = (event.clientX - rect.left) / zoomLevel;
       const y = (event.clientY - rect.top) / zoomLevel;
 
-      if (mode === "add") {
-        addPoint(x, y);
-      }
+      if (mode === "add") addPoint(x, y);
 
-      if (mode === "move" && movingPoint) {
+      if (movingPoint) {
         movePoint(movingPoint, x, y);
         movingPoint = null;
       }
@@ -316,31 +371,31 @@
 
       const point = {
         uid: Date.now() + Math.random(),
-        dataId: dataId,
+        dataId,
         number: dt.counter,
-        x: x,
-        y: y,
+        x,
+        y,
         measurement: "",
-        moved: false
+        moved: false,
+        moveDistance: 0
       };
 
       points.push(point);
       dt.counter++;
 
-      undoStack.push({ type: "add", point: point });
+      undoStack.push({ type: "add", point });
       redoStack = [];
 
       createPointElement(point);
       statusText.textContent = dt.name + " point " + point.number + " added.";
+      autoSave();
     }
 
     function createPointElement(point) {
       const div = document.createElement("div");
-
       div.className = "point";
       div.dataset.uid = point.uid;
       div.textContent = point.measurement || point.number;
-
       div.style.left = point.x + "px";
       div.style.top = point.y + "px";
 
@@ -349,82 +404,124 @@
 
       div.onclick = function(event) {
         event.stopPropagation();
-
-        if (mode === "edit") {
-          editPoint(point);
-        } else if (mode === "move") {
-          selectPointToMove(point, div);
-        } else if (mode === "delete") {
-          deletePoint(point);
-        }
+        if (mode === "edit") editPoint(point);
       };
 
+      div.oncontextmenu = function(event) {
+        event.preventDefault();
+        showContextMenu(event.clientX, event.clientY, point);
+      };
+
+      let pressTimer = null;
+
+      div.addEventListener("touchstart", function(event) {
+        pressTimer = setTimeout(() => {
+          const touch = event.touches[0];
+          showContextMenu(touch.clientX, touch.clientY, point);
+        }, 650);
+      });
+
+      div.addEventListener("touchend", function() {
+        clearTimeout(pressTimer);
+      });
+
       drawingArea.appendChild(div);
+    }
+
+    function showContextMenu(x, y, point) {
+      contextPoint = point;
+      contextMenu.style.left = x + "px";
+      contextMenu.style.top = y + "px";
+      contextMenu.style.display = "block";
+    }
+
+    document.addEventListener("click", function(event) {
+      if (!contextMenu.contains(event.target)) {
+        contextMenu.style.display = "none";
+      }
+    });
+
+    function contextEdit() {
+      contextMenu.style.display = "none";
+      if (contextPoint) editPoint(contextPoint);
+    }
+
+    function contextMove() {
+      contextMenu.style.display = "none";
+      if (!contextPoint) return;
+      movingPoint = contextPoint;
+
+      document.querySelectorAll(".point").forEach(p => p.classList.remove("selected"));
+      const element = document.querySelector(`[data-uid="${contextPoint.uid}"]`);
+      if (element) element.classList.add("selected");
+
+      statusText.textContent = "Move selected point: tap new location.";
+    }
+
+    function contextDelete() {
+      contextMenu.style.display = "none";
+      if (contextPoint) deletePoint(contextPoint);
     }
 
     function editPoint(point) {
       const oldValue = point.measurement;
 
-      const value = prompt(
-        "Enter measurement for point " + point.number,
-        point.measurement
-      );
+      const value = prompt("Enter measurement for point " + point.number, point.measurement);
 
       if (value !== null) {
         point.measurement = value.trim();
 
         undoStack.push({
           type: "edit",
-          point: point,
-          oldValue: oldValue,
+          point,
+          oldValue,
           newValue: point.measurement
         });
 
         redoStack = [];
         updatePointElement(point);
+        autoSave();
       }
-    }
-
-    function selectPointToMove(point, div) {
-      movingPoint = point;
-      document.querySelectorAll(".point").forEach(p => p.classList.remove("selected"));
-      div.classList.add("selected");
-      statusText.textContent = "Selected point " + point.number + ". Tap new location.";
     }
 
     function movePoint(point, newX, newY) {
       const oldX = point.x;
       const oldY = point.y;
 
+      const distance = Math.sqrt(Math.pow(newX - oldX, 2) + Math.pow(newY - oldY, 2));
+
       point.x = newX;
       point.y = newY;
       point.moved = true;
+      point.moveDistance += distance;
 
       undoStack.push({
         type: "move",
-        point: point,
-        oldX: oldX,
-        oldY: oldY,
-        newX: newX,
-        newY: newY
+        point,
+        oldX,
+        oldY,
+        newX,
+        newY,
+        distance
       });
 
       redoStack = [];
       updatePointElement(point);
       statusText.textContent = "Point moved. CSV will include warning.";
+      autoSave();
     }
 
     function deletePoint(point) {
-      const ok = confirm("Delete this point?");
-      if (!ok) return;
+      if (!confirm("Delete this point?")) return;
 
       points = points.filter(p => p.uid !== point.uid);
       removePointElement(point.uid);
 
-      undoStack.push({ type: "delete", point: point });
+      undoStack.push({ type: "delete", point });
       redoStack = [];
 
       statusText.textContent = "Point deleted.";
+      autoSave();
     }
 
     function updatePointElement(point) {
@@ -432,11 +529,11 @@
       if (!element) return;
 
       const dt = getDataType(point.dataId);
-
       element.textContent = point.measurement || point.number;
       element.style.left = point.x + "px";
       element.style.top = point.y + "px";
       element.style.color = dt ? dt.color : "black";
+      element.style.display = dt && dt.export ? "block" : "none";
       element.classList.remove("selected");
     }
 
@@ -468,6 +565,7 @@
       if (action.type === "move") {
         action.point.x = action.oldX;
         action.point.y = action.oldY;
+        action.point.moveDistance = Math.max(0, action.point.moveDistance - action.distance);
         updatePointElement(action.point);
       }
 
@@ -477,6 +575,7 @@
       }
 
       redoStack.push(action);
+      autoSave();
     }
 
     function redo() {
@@ -499,6 +598,7 @@
         action.point.x = action.newX;
         action.point.y = action.newY;
         action.point.moved = true;
+        action.point.moveDistance += action.distance;
         updatePointElement(action.point);
       }
 
@@ -508,6 +608,7 @@
       }
 
       undoStack.push(action);
+      autoSave();
     }
 
     function zoomIn() {
@@ -532,25 +633,22 @@
     }
 
     function exportCSV() {
-      let fileName = prompt("Enter CSV file name:", "measurements");
+      let fileName = prompt("Enter CSV file name:", workNameInput.value || "measurements");
       if (!fileName) return;
+      if (!fileName.endsWith(".csv")) fileName += ".csv";
 
-      if (!fileName.endsWith(".csv")) {
-        fileName += ".csv";
-      }
-
+      const exportTypes = dataTypes.filter(dt => dt.export);
       const grouped = {};
-      dataTypes.forEach(dt => grouped[dt.id] = []);
+      exportTypes.forEach(dt => grouped[dt.id] = []);
 
       points.forEach(p => {
         if (grouped[p.dataId]) grouped[p.dataId].push(p);
       });
 
-      const maxRows = Math.max(...dataTypes.map(dt => grouped[dt.id].length), 0);
+      const maxRows = Math.max(...exportTypes.map(dt => grouped[dt.id].length), 0);
 
       let headers = [];
-
-      dataTypes.forEach(dt => {
+      exportTypes.forEach(dt => {
         headers.push(dt.name + " Seq");
         headers.push(dt.name + " Measurement");
         headers.push(dt.name + " Warning");
@@ -561,13 +659,20 @@
       for (let i = 0; i < maxRows; i++) {
         const row = [];
 
-        dataTypes.forEach(dt => {
+        exportTypes.forEach(dt => {
           const p = grouped[dt.id][i];
 
           if (p) {
             row.push(p.number);
             row.push(p.measurement);
-            row.push(p.moved ? "WARNING: point moved, check sequence/order" : "");
+
+            if (p.moveDistance > 80) {
+              row.push("WARNING: point moved a large distance, check sequence/order");
+            } else if (p.moved) {
+              row.push("Point moved");
+            } else {
+              row.push("");
+            }
           } else {
             row.push("");
             row.push("");
@@ -590,12 +695,9 @@
     }
 
     function exportPDF() {
-      let fileName = prompt("Enter PDF file name:", "marked_drawing");
+      let fileName = prompt("Enter PDF file name:", workNameInput.value || "marked_drawing");
       if (!fileName) return;
-
-      if (!fileName.endsWith(".pdf")) {
-        fileName += ".pdf";
-      }
+      if (!fileName.endsWith(".pdf")) fileName += ".pdf";
 
       const originalTransform = drawingArea.style.transform;
       drawingArea.style.transform = "scale(1)";
@@ -617,17 +719,129 @@
       });
     }
 
+    commentCanvas.addEventListener("pointerdown", function(event) {
+      if (mode !== "comment") return;
+
+      isDrawingComment = true;
+      const pos = getCanvasPos(event);
+      lastCommentX = pos.x;
+      lastCommentY = pos.y;
+    });
+
+    commentCanvas.addEventListener("pointermove", function(event) {
+      if (!isDrawingComment || mode !== "comment") return;
+
+      const pos = getCanvasPos(event);
+      const ctx = commentCanvas.getContext("2d");
+
+      ctx.strokeStyle = "#ff0000";
+      ctx.lineWidth = 3;
+      ctx.lineCap = "round";
+
+      ctx.beginPath();
+      ctx.moveTo(lastCommentX, lastCommentY);
+      ctx.lineTo(pos.x, pos.y);
+      ctx.stroke();
+
+      lastCommentX = pos.x;
+      lastCommentY = pos.y;
+
+      commentImageData = commentCanvas.toDataURL();
+      autoSave();
+    });
+
+    commentCanvas.addEventListener("pointerup", function() {
+      isDrawingComment = false;
+    });
+
+    commentCanvas.addEventListener("pointerleave", function() {
+      isDrawingComment = false;
+    });
+
+    function getCanvasPos(event) {
+      const rect = commentCanvas.getBoundingClientRect();
+      return {
+        x: (event.clientX - rect.left) / zoomLevel,
+        y: (event.clientY - rect.top) / zoomLevel
+      };
+    }
+
+    function clearComments() {
+      if (!confirm("Clear all comments?")) return;
+      const ctx = commentCanvas.getContext("2d");
+      ctx.clearRect(0, 0, commentCanvas.width, commentCanvas.height);
+      commentImageData = "";
+      autoSave();
+    }
+
+    function getWorkKey() {
+      return "fieldMeasurement_" + (workNameInput.value || "default");
+    }
+
+    function saveWork() {
+      const data = {
+        points,
+        dataTypes,
+        currentFileName,
+        commentImageData
+      };
+
+      localStorage.setItem(getWorkKey(), JSON.stringify(data));
+      statusText.textContent = "Saved: " + workNameInput.value;
+    }
+
+    function autoSave() {
+      try {
+        saveWork();
+      } catch (e) {
+        console.warn("Auto save failed", e);
+      }
+    }
+
+    function loadWork() {
+      const raw = localStorage.getItem(getWorkKey());
+
+      if (!raw) {
+        alert("No saved work found for: " + workNameInput.value);
+        return;
+      }
+
+      const data = JSON.parse(raw);
+
+      clearAllPoints();
+
+      points = data.points || [];
+      dataTypes = data.dataTypes || dataTypes;
+      currentFileName = data.currentFileName || "";
+      commentImageData = data.commentImageData || "";
+
+      renderDataControls();
+      points.forEach(createPointElement);
+
+      if (commentImageData && commentCanvas.width > 0) {
+        const img = new Image();
+        img.onload = function() {
+          commentCanvas.getContext("2d").drawImage(img, 0, 0);
+        };
+        img.src = commentImageData;
+      }
+
+      statusText.textContent = "Loaded saved work. Please open the same PDF/image if drawing is blank.";
+    }
+
     function clearAllPoints() {
       points = [];
       undoStack = [];
       redoStack = [];
-      selectedPoint = null;
       movingPoint = null;
       zoomLevel = 1;
       drawingArea.style.transform = "scale(1)";
-
       dataTypes.forEach(dt => dt.counter = 1);
       document.querySelectorAll(".point").forEach(p => p.remove());
+
+      const ctx = commentCanvas.getContext("2d");
+      ctx.clearRect(0, 0, commentCanvas.width, commentCanvas.height);
+      commentImageData = "";
     }
   </script>
 
