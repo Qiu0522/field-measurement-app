@@ -2,7 +2,9 @@
 <html>
 <head>
   <title>Field Measurement App</title>
+
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
   <style>
     body {
@@ -31,6 +33,7 @@
       transform-origin: top left;
       margin: 10px;
       border: 1px solid #ccc;
+      background: white;
     }
 
     #drawing, #pdfCanvas {
@@ -39,17 +42,19 @@
 
     .point {
       position: absolute;
-      width: 16px;
-      height: 16px;
-      border-radius: 50%;
+      min-width: 22px;
+      height: 14px;
+      padding: 1px 4px;
+      border-radius: 7px;
       color: white;
       text-align: center;
-      line-height: 16px;
-      font-size: 9px;
+      line-height: 14px;
+      font-size: 8px;
       font-weight: bold;
       cursor: pointer;
       transform: translate(-50%, -50%);
       border: 1px solid white;
+      white-space: nowrap;
     }
 
     .blue { background: blue; }
@@ -81,6 +86,7 @@
     <button onclick="zoomIn()">Zoom In</button>
     <button onclick="zoomOut()">Zoom Out</button>
     <button onclick="exportCSV()">Export CSV</button>
+    <button onclick="exportPDF()">Export PDF</button>
 
     <span id="status">Choose a PDF or image first.</span>
   </div>
@@ -186,7 +192,6 @@
       if (event.target.classList.contains("point")) return;
 
       const rect = drawingArea.getBoundingClientRect();
-
       const x = (event.clientX - rect.left) / zoomLevel;
       const y = (event.clientY - rect.top) / zoomLevel;
 
@@ -217,7 +222,7 @@
       const div = document.createElement("div");
 
       div.className = "point " + point.color;
-      div.textContent = point.number;
+      div.textContent = point.measurement || point.number;
       div.dataset.uid = point.uid;
 
       div.style.left = point.x + "px";
@@ -235,6 +240,7 @@
 
         if (value !== null) {
           point.measurement = value.trim();
+          div.textContent = point.measurement || point.number;
 
           if (point.measurement !== "") {
             div.classList.add("done");
@@ -301,6 +307,8 @@
       const element = document.querySelector(`[data-uid="${point.uid}"]`);
       if (!element) return;
 
+      element.textContent = point.measurement || point.number;
+
       if (point.measurement !== "") {
         element.classList.add("done");
       } else {
@@ -325,73 +333,103 @@
       statusText.textContent = "Zoom: " + Math.round(zoomLevel * 100) + "%";
     }
 
-function exportCSV() {
-  let fileName = prompt("Enter CSV file name:", "measurements");
-  if (!fileName) return;
+    function exportCSV() {
+      let fileName = prompt("Enter CSV file name:", "measurements");
+      if (!fileName) return;
 
-  if (!fileName.endsWith(".csv")) {
-    fileName += ".csv";
-  }
-
-  const colors = ["blue", "red", "green", "purple"];
-
-  const grouped = {
-    blue: [],
-    red: [],
-    green: [],
-    purple: []
-  };
-
-  points.forEach(p => {
-    grouped[p.color].push(p);
-  });
-
-  const maxRows = Math.max(
-    grouped.blue.length,
-    grouped.red.length,
-    grouped.green.length,
-    grouped.purple.length
-  );
-
-  let csv = "Blue Seq,Blue Measurement,Red Seq,Red Measurement,Green Seq,Green Measurement,Purple Seq,Purple Measurement\n";
-
-  for (let i = 0; i < maxRows; i++) {
-    const row = [];
-
-    colors.forEach(color => {
-      const p = grouped[color][i];
-
-      if (p) {
-        row.push(p.number);
-        row.push(p.measurement);
-      } else {
-        row.push("");
-        row.push("");
+      if (!fileName.endsWith(".csv")) {
+        fileName += ".csv";
       }
-    });
 
-    csv += row.join(",") + "\n";
-  }
+      const colors = ["blue", "red", "green", "purple"];
 
-  const blob = new Blob([csv], { type: "text/csv" });
-  const url = URL.createObjectURL(blob);
+      const grouped = {
+        blue: [],
+        red: [],
+        green: [],
+        purple: []
+      };
 
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = fileName;
-  a.click();
+      points.forEach(p => {
+        grouped[p.color].push(p);
+      });
 
-  URL.revokeObjectURL(url);
-}
+      const maxRows = Math.max(
+        grouped.blue.length,
+        grouped.red.length,
+        grouped.green.length,
+        grouped.purple.length
+      );
+
+      let csv = "Blue Seq,Blue Measurement,Red Seq,Red Measurement,Green Seq,Green Measurement,Purple Seq,Purple Measurement\n";
+
+      for (let i = 0; i < maxRows; i++) {
+        const row = [];
+
+        colors.forEach(color => {
+          const p = grouped[color][i];
+
+          if (p) {
+            row.push(p.number);
+            row.push('"' + p.measurement + '"');
+          } else {
+            row.push("");
+            row.push("");
+          }
+        });
+
+        csv += row.join(",") + "\n";
+      }
+
+      const blob = new Blob([csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      a.click();
+
+      URL.revokeObjectURL(url);
+    }
+
+    function exportPDF() {
+      let fileName = prompt("Enter PDF file name:", "marked_drawing");
+      if (!fileName) return;
+
+      if (!fileName.endsWith(".pdf")) {
+        fileName += ".pdf";
+      }
+
+      const originalTransform = drawingArea.style.transform;
+      drawingArea.style.transform = "scale(1)";
+
+      const options = {
+        margin: 0,
+        filename: fileName,
+        image: { type: "jpeg", quality: 1 },
+        html2canvas: { scale: 2 },
+        jsPDF: {
+          unit: "px",
+          format: [drawingArea.offsetWidth, drawingArea.offsetHeight],
+          orientation: drawingArea.offsetWidth > drawingArea.offsetHeight ? "landscape" : "portrait"
+        }
+      };
+
+      html2pdf().set(options).from(drawingArea).save().then(() => {
+        drawingArea.style.transform = originalTransform;
+      });
+    }
 
     function clearAll() {
       points = [];
+
       counters = {
         blue: 1,
         red: 1,
         green: 1,
         purple: 1
       };
+
       undoStack = [];
       redoStack = [];
       zoomLevel = 1;
