@@ -29,6 +29,20 @@
       font-size: 13px;
     }
 
+    button {
+      background: #f2f2f2;
+      border: 1px solid #999;
+      border-radius: 4px;
+      padding: 3px 8px;
+    }
+
+    .activeTool {
+      background: #666 !important;
+      color: white !important;
+      border: 2px solid #333 !important;
+      font-weight: bold;
+    }
+
     details {
       display: inline-block;
       vertical-align: top;
@@ -159,8 +173,8 @@
     Select Data:
     <select id="dataSelect"></select>
 
-    <button onclick="setMode('add')">Add Points</button>
-    <button onclick="setMode('edit')">🔒 Edit / Lock</button>
+    <button id="addBtn" onclick="setMode('add')">Add Points</button>
+    <button id="editBtn" onclick="setMode('edit')">🔒 Edit / Lock</button>
 
     <button onclick="setPenMode()" id="penBtn">✏️</button>
     <button onclick="setEraserMode()" id="eraserBtn">🧽</button>
@@ -230,6 +244,8 @@
     const workNameInput = document.getElementById("workName");
     const penBtn = document.getElementById("penBtn");
     const eraserBtn = document.getElementById("eraserBtn");
+    const addBtn = document.getElementById("addBtn");
+    const editBtn = document.getElementById("editBtn");
 
     pdfjsLib.GlobalWorkerOptions.workerSrc =
       "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
@@ -379,6 +395,29 @@
       return dataTypes.find(dt => dt.id === id);
     }
 
+    function updateToolButtons() {
+      addBtn.classList.remove("activeTool");
+      editBtn.classList.remove("activeTool");
+      penBtn.classList.remove("activeTool");
+      eraserBtn.classList.remove("activeTool");
+
+      if (mode === "add" && commentTool === "none") {
+        addBtn.classList.add("activeTool");
+      }
+
+      if (mode === "edit" && commentTool === "none") {
+        editBtn.classList.add("activeTool");
+      }
+
+      if (commentTool === "pen") {
+        penBtn.classList.add("activeTool");
+      }
+
+      if (commentTool === "eraser") {
+        eraserBtn.classList.add("activeTool");
+      }
+    }
+
     function setMode(newMode) {
       mode = newMode;
       movingPoint = null;
@@ -389,6 +428,7 @@
       if (mode === "edit") statusText.textContent = "Locked edit mode: blank tap will NOT add points. Tap point to edit. Right click / long press for Move or Delete.";
 
       setCommentTool("none");
+      updateToolButtons();
     }
 
     function setPenMode() {
@@ -412,12 +452,12 @@
 
       drawingArea.classList.toggle("drawActive", tool !== "none");
 
-      penBtn.style.background = tool === "pen" ? "#cce5ff" : "";
-      eraserBtn.style.background = tool === "eraser" ? "#cce5ff" : "";
-
       if (tool === "pen") statusText.textContent = "Pen active. Draw with Apple Pencil or finger.";
       if (tool === "eraser") statusText.textContent = "Eraser active. Erase comments.";
-      if (tool === "none" && mode !== "add") statusText.textContent = "Tool off. You can scroll/pan the drawing.";
+      if (tool === "none" && mode === "add") statusText.textContent = "Add mode: tap blank drawing area to add points. Tap points to edit.";
+      if (tool === "none" && mode === "edit") statusText.textContent = "Locked edit mode: blank tap will NOT add points. Tap point to edit. Right click / long press for Move or Delete.";
+
+      updateToolButtons();
     }
 
     drawingArea.addEventListener("click", function(event) {
@@ -604,6 +644,7 @@
       if (element) element.classList.add("selected");
 
       statusText.textContent = "Move selected point: drag it with one finger/mouse.";
+      updateToolButtons();
     }
 
     function contextDelete() {
@@ -1004,6 +1045,7 @@
       }
 
       statusText.textContent = "Loaded saved work. Open the same PDF/image if drawing is blank.";
+      updateToolButtons();
     }
 
     function clearAllPoints() {
@@ -1022,6 +1064,7 @@
       }
 
       commentImageData = "";
+      updateToolButtons();
     }
   </script>
 
