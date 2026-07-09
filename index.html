@@ -19,17 +19,41 @@
       top: 0;
       z-index: 10;
       font-size: 13px;
+      line-height: 28px;
     }
 
-    #toolbar input[type="text"] {
-      width: 80px;
-      margin-right: 6px;
+    button, select, input {
+      margin: 2px;
+      font-size: 13px;
+    }
+
+    details {
+      display: inline-block;
+      vertical-align: top;
+      margin-left: 8px;
+    }
+
+    summary {
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    .dataRow {
+      display: block;
+      margin: 4px 0;
+      background: #f8f8f8;
+      padding: 4px;
+      border-radius: 4px;
+    }
+
+    .dataRow input[type="text"] {
+      width: 110px;
     }
 
     #drawingWrapper {
       overflow: auto;
       width: 100vw;
-      height: calc(100vh - 70px);
+      height: calc(100vh - 90px);
       background: #f5f5f5;
     }
 
@@ -59,17 +83,16 @@
       cursor: pointer;
       transform: translate(-50%, -50%);
       white-space: nowrap;
+      user-select: none;
     }
 
-    .blue { color: blue; }
-    .red { color: red; }
-    .green { color: green; }
-    .purple { color: purple; }
+    .point.selected {
+      text-decoration: underline;
+    }
 
-    .done {
-      background: transparent;
-      border: none;
-      outline: none;
+    #status {
+      margin-left: 10px;
+      font-weight: bold;
     }
   </style>
 </head>
@@ -79,30 +102,26 @@
   <div id="toolbar">
     <input type="file" id="fileInput" accept="image/*,.pdf">
 
-    Blue name:
-    <input type="text" id="blueName" value="Blue">
+    <details>
+      <summary>Add Data</summary>
+      <div id="dataList"></div>
+      <button onclick="addDataType()">+ Add Data Type</button>
+    </details>
 
-    Red name:
-    <input type="text" id="redName" value="Red">
+    Select Data:
+    <select id="dataSelect"></select>
 
-    Green name:
-    <input type="text" id="greenName" value="Green">
+    <button onclick="setMode('add')">Add Points</button>
+    <button onclick="setMode('edit')">Select/Edit</button>
+    <button onclick="setMode('move')">Move</button>
+    <button onclick="setMode('delete')">Delete</button>
 
-    Purple name:
-    <input type="text" id="purpleName" value="Purple">
+    <button onclick="undo()" title="Undo">↶</button>
+    <button onclick="redo()" title="Redo">↷</button>
 
-    <select id="pointColor">
-      <option value="blue">Blue</option>
-      <option value="red">Red</option>
-      <option value="green">Green</option>
-      <option value="purple">Purple</option>
-    </select>
+    <button onclick="zoomIn()">＋</button>
+    <button onclick="zoomOut()">－</button>
 
-    <button onclick="addPointMode()">Add Points</button>
-    <button onclick="undo()">Undo</button>
-    <button onclick="redo()">Redo</button>
-    <button onclick="zoomIn()">Zoom In</button>
-    <button onclick="zoomOut()">Zoom Out</button>
     <button onclick="exportCSV()">Export CSV</button>
     <button onclick="exportPDF()">Export PDF</button>
 
@@ -118,15 +137,17 @@
 
   <script>
     let points = [];
-    let addingPoints = false;
+    let mode = "edit";
     let zoomLevel = 1;
+    let selectedPoint = null;
+    let movingPoint = null;
 
-    let counters = {
-      blue: 1,
-      red: 1,
-      green: 1,
-      purple: 1
-    };
+    let dataTypes = [
+      { id: "data1", name: "Blue", color: "#0066ff", counter: 1 },
+      { id: "data2", name: "Red", color: "#ff0000", counter: 1 },
+      { id: "data3", name: "Green", color: "#00aa00", counter: 1 },
+      { id: "data4", name: "Purple", color: "#8000ff", counter: 1 }
+    ];
 
     let undoStack = [];
     let redoStack = [];
@@ -136,16 +157,19 @@
     const pdfCanvas = document.getElementById("pdfCanvas");
     const drawingArea = document.getElementById("drawingArea");
     const statusText = document.getElementById("status");
-    const pointColorSelect = document.getElementById("pointColor");
+    const dataSelect = document.getElementById("dataSelect");
+    const dataList = document.getElementById("dataList");
 
     pdfjsLib.GlobalWorkerOptions.workerSrc =
       "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+    renderDataControls();
 
     fileInput.addEventListener("change", function(event) {
       const file = event.target.files[0];
       if (!file) return;
 
-      clearAll();
+      clearAllPoints();
 
       if (file.type === "application/pdf") {
         loadPDF(file);
@@ -163,7 +187,7 @@
         drawing.src = e.target.result;
         drawing.style.display = "block";
         pdfCanvas.style.display = "none";
-        statusText.textContent = "Image loaded. Click Add Points.";
+        statusText.textContent = "Image loaded.";
       };
 
       reader.readAsDataURL(file);
@@ -178,7 +202,7 @@
         pdfjsLib.getDocument(typedArray).promise
           .then(pdf => pdf.getPage(1))
           .then(page => {
-            const scale = 3;
+            const scale = 4;
             const viewport = page.getViewport({ scale: scale });
 
             const context = pdfCanvas.getContext("2d");
@@ -193,85 +217,236 @@
               viewport: viewport
             });
 
-            statusText.textContent = "PDF page 1 loaded. Click Add Points.";
+            statusText.textContent = "PDF page 1 loaded. High clarity mode.";
           });
       };
 
       reader.readAsArrayBuffer(file);
     }
 
-    function addPointMode() {
-      addingPoints = true;
-      statusText.textContent = "Add mode: tap drawing to add selected color points.";
+    function renderDataControls() {
+      dataList.innerHTML = "";
+      dataSelect.innerHTML = "";
+
+      dataTypes.forEach(dt => {
+        const row = document.createElement("div");
+        row.className = "dataRow";
+
+        row.innerHTML = `
+          Name:
+          <input type="text" value="${dt.name}" onchange="renameDataType('${dt.id}', this.value)">
+          Color:
+          <input type="color" value="${dt.color}" onchange="changeDataColor('${dt.id}', this.value)">
+        `;
+
+        dataList.appendChild(row);
+
+        const option = document.createElement("option");
+        option.value = dt.id;
+        option.textContent = dt.name;
+        dataSelect.appendChild(option);
+      });
+
+      refreshPointStyles();
+    }
+
+    function addDataType() {
+      const id = "data" + Date.now();
+      dataTypes.push({
+        id: id,
+        name: "New Data",
+        color: "#000000",
+        counter: 1
+      });
+
+      renderDataControls();
+    }
+
+    function renameDataType(id, newName) {
+      const dt = getDataType(id);
+      if (!dt) return;
+      dt.name = newName || "Unnamed";
+      renderDataControls();
+    }
+
+    function changeDataColor(id, newColor) {
+      const dt = getDataType(id);
+      if (!dt) return;
+      dt.color = newColor;
+      refreshPointStyles();
+    }
+
+    function getDataType(id) {
+      return dataTypes.find(dt => dt.id === id);
+    }
+
+    function setMode(newMode) {
+      mode = newMode;
+      selectedPoint = null;
+      movingPoint = null;
+      document.querySelectorAll(".point").forEach(p => p.classList.remove("selected"));
+
+      if (mode === "add") statusText.textContent = "Add mode: tap drawing to add points.";
+      if (mode === "edit") statusText.textContent = "Edit mode: tap point to enter measurement.";
+      if (mode === "move") statusText.textContent = "Move mode: tap point, then tap new location.";
+      if (mode === "delete") statusText.textContent = "Delete mode: tap point to delete.";
     }
 
     drawingArea.addEventListener("click", function(event) {
-      if (!addingPoints) return;
       if (event.target.classList.contains("point")) return;
 
       const rect = drawingArea.getBoundingClientRect();
       const x = (event.clientX - rect.left) / zoomLevel;
       const y = (event.clientY - rect.top) / zoomLevel;
 
-      const color = pointColorSelect.value;
-      const number = counters[color];
+      if (mode === "add") {
+        addPoint(x, y);
+      }
+
+      if (mode === "move" && movingPoint) {
+        movePoint(movingPoint, x, y);
+        movingPoint = null;
+      }
+    });
+
+    function addPoint(x, y) {
+      const dataId = dataSelect.value;
+      const dt = getDataType(dataId);
+      if (!dt) return;
 
       const point = {
         uid: Date.now() + Math.random(),
-        color: color,
-        number: number,
+        dataId: dataId,
+        number: dt.counter,
         x: x,
         y: y,
-        measurement: ""
+        measurement: "",
+        moved: false
       };
 
       points.push(point);
-      counters[color]++;
+      dt.counter++;
 
       undoStack.push({ type: "add", point: point });
       redoStack = [];
 
       createPointElement(point);
-
-      statusText.textContent = color + " point " + number + " added.";
-    });
+      statusText.textContent = dt.name + " point " + point.number + " added.";
+    }
 
     function createPointElement(point) {
       const div = document.createElement("div");
 
-      div.className = "point " + point.color;
-      div.textContent = point.measurement || point.number;
+      div.className = "point";
       div.dataset.uid = point.uid;
+      div.textContent = point.measurement || point.number;
 
       div.style.left = point.x + "px";
       div.style.top = point.y + "px";
 
+      const dt = getDataType(point.dataId);
+      div.style.color = dt ? dt.color : "black";
+
       div.onclick = function(event) {
         event.stopPropagation();
 
-        const oldValue = point.measurement;
-
-        const value = prompt(
-          "Enter measurement for " + point.color + " point " + point.number,
-          point.measurement
-        );
-
-        if (value !== null) {
-          point.measurement = value.trim();
-          div.textContent = point.measurement || point.number;
-
-          undoStack.push({
-            type: "edit",
-            point: point,
-            oldValue: oldValue,
-            newValue: point.measurement
-          });
-
-          redoStack = [];
+        if (mode === "edit") {
+          editPoint(point);
+        } else if (mode === "move") {
+          selectPointToMove(point, div);
+        } else if (mode === "delete") {
+          deletePoint(point);
         }
       };
 
       drawingArea.appendChild(div);
+    }
+
+    function editPoint(point) {
+      const oldValue = point.measurement;
+
+      const value = prompt(
+        "Enter measurement for point " + point.number,
+        point.measurement
+      );
+
+      if (value !== null) {
+        point.measurement = value.trim();
+
+        undoStack.push({
+          type: "edit",
+          point: point,
+          oldValue: oldValue,
+          newValue: point.measurement
+        });
+
+        redoStack = [];
+        updatePointElement(point);
+      }
+    }
+
+    function selectPointToMove(point, div) {
+      movingPoint = point;
+      document.querySelectorAll(".point").forEach(p => p.classList.remove("selected"));
+      div.classList.add("selected");
+      statusText.textContent = "Selected point " + point.number + ". Tap new location.";
+    }
+
+    function movePoint(point, newX, newY) {
+      const oldX = point.x;
+      const oldY = point.y;
+
+      point.x = newX;
+      point.y = newY;
+      point.moved = true;
+
+      undoStack.push({
+        type: "move",
+        point: point,
+        oldX: oldX,
+        oldY: oldY,
+        newX: newX,
+        newY: newY
+      });
+
+      redoStack = [];
+      updatePointElement(point);
+      statusText.textContent = "Point moved. CSV will include warning.";
+    }
+
+    function deletePoint(point) {
+      const ok = confirm("Delete this point?");
+      if (!ok) return;
+
+      points = points.filter(p => p.uid !== point.uid);
+      removePointElement(point.uid);
+
+      undoStack.push({ type: "delete", point: point });
+      redoStack = [];
+
+      statusText.textContent = "Point deleted.";
+    }
+
+    function updatePointElement(point) {
+      const element = document.querySelector(`[data-uid="${point.uid}"]`);
+      if (!element) return;
+
+      const dt = getDataType(point.dataId);
+
+      element.textContent = point.measurement || point.number;
+      element.style.left = point.x + "px";
+      element.style.top = point.y + "px";
+      element.style.color = dt ? dt.color : "black";
+      element.classList.remove("selected");
+    }
+
+    function removePointElement(uid) {
+      const element = document.querySelector(`[data-uid="${uid}"]`);
+      if (element) element.remove();
+    }
+
+    function refreshPointStyles() {
+      points.forEach(updatePointElement);
     }
 
     function undo() {
@@ -281,12 +456,24 @@
       if (action.type === "add") {
         points = points.filter(p => p.uid !== action.point.uid);
         removePointElement(action.point.uid);
-        counters[action.point.color]--;
+        const dt = getDataType(action.point.dataId);
+        if (dt) dt.counter--;
       }
 
       if (action.type === "edit") {
         action.point.measurement = action.oldValue;
         updatePointElement(action.point);
+      }
+
+      if (action.type === "move") {
+        action.point.x = action.oldX;
+        action.point.y = action.oldY;
+        updatePointElement(action.point);
+      }
+
+      if (action.type === "delete") {
+        points.push(action.point);
+        createPointElement(action.point);
       }
 
       redoStack.push(action);
@@ -298,8 +485,9 @@
 
       if (action.type === "add") {
         points.push(action.point);
-        counters[action.point.color]++;
         createPointElement(action.point);
+        const dt = getDataType(action.point.dataId);
+        if (dt) dt.counter++;
       }
 
       if (action.type === "edit") {
@@ -307,19 +495,19 @@
         updatePointElement(action.point);
       }
 
+      if (action.type === "move") {
+        action.point.x = action.newX;
+        action.point.y = action.newY;
+        action.point.moved = true;
+        updatePointElement(action.point);
+      }
+
+      if (action.type === "delete") {
+        points = points.filter(p => p.uid !== action.point.uid);
+        removePointElement(action.point.uid);
+      }
+
       undoStack.push(action);
-    }
-
-    function removePointElement(uid) {
-      const element = document.querySelector(`[data-uid="${uid}"]`);
-      if (element) element.remove();
-    }
-
-    function updatePointElement(point) {
-      const element = document.querySelector(`[data-uid="${point.uid}"]`);
-      if (!element) return;
-
-      element.textContent = point.measurement || point.number;
     }
 
     function zoomIn() {
@@ -339,11 +527,6 @@
       statusText.textContent = "Zoom: " + Math.round(zoomLevel * 100) + "%";
     }
 
-    function getCategoryName(color) {
-      const input = document.getElementById(color + "Name");
-      return input ? input.value || color : color;
-    }
-
     function cleanCSV(value) {
       return '"' + String(value || "").replace(/"/g, '""') + '"';
     }
@@ -356,32 +539,21 @@
         fileName += ".csv";
       }
 
-      const colors = ["blue", "red", "green", "purple"];
-
-      const grouped = {
-        blue: [],
-        red: [],
-        green: [],
-        purple: []
-      };
+      const grouped = {};
+      dataTypes.forEach(dt => grouped[dt.id] = []);
 
       points.forEach(p => {
-        grouped[p.color].push(p);
+        if (grouped[p.dataId]) grouped[p.dataId].push(p);
       });
 
-      const maxRows = Math.max(
-        grouped.blue.length,
-        grouped.red.length,
-        grouped.green.length,
-        grouped.purple.length
-      );
+      const maxRows = Math.max(...dataTypes.map(dt => grouped[dt.id].length), 0);
 
       let headers = [];
 
-      colors.forEach(color => {
-        const name = getCategoryName(color);
-        headers.push(name + " Seq");
-        headers.push(name + " Measurement");
+      dataTypes.forEach(dt => {
+        headers.push(dt.name + " Seq");
+        headers.push(dt.name + " Measurement");
+        headers.push(dt.name + " Warning");
       });
 
       let csv = headers.map(cleanCSV).join(",") + "\n";
@@ -389,13 +561,15 @@
       for (let i = 0; i < maxRows; i++) {
         const row = [];
 
-        colors.forEach(color => {
-          const p = grouped[color][i];
+        dataTypes.forEach(dt => {
+          const p = grouped[dt.id][i];
 
           if (p) {
             row.push(p.number);
             row.push(p.measurement);
+            row.push(p.moved ? "WARNING: point moved, check sequence/order" : "");
           } else {
+            row.push("");
             row.push("");
             row.push("");
           }
@@ -443,21 +617,16 @@
       });
     }
 
-    function clearAll() {
+    function clearAllPoints() {
       points = [];
-
-      counters = {
-        blue: 1,
-        red: 1,
-        green: 1,
-        purple: 1
-      };
-
       undoStack = [];
       redoStack = [];
+      selectedPoint = null;
+      movingPoint = null;
       zoomLevel = 1;
       drawingArea.style.transform = "scale(1)";
 
+      dataTypes.forEach(dt => dt.counter = 1);
       document.querySelectorAll(".point").forEach(p => p.remove());
     }
   </script>
