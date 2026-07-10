@@ -15,6 +15,8 @@ const Workspace = (() => {
 
   let pointMode = "lock";
   let commentTool = "none";
+  let brushColor = "#ff0000";
+  let brushWidth = 5;
   let showOrderLabels = false;
   let zoomLevel = 1;
 
@@ -63,7 +65,10 @@ const Workspace = (() => {
     els.addBtn = document.getElementById("addBtn");
     els.lockBtn = document.getElementById("lockBtn");
     els.penBtn = document.getElementById("penBtn");
+    els.highlighterBtn = document.getElementById("highlighterBtn");
     els.eraserBtn = document.getElementById("eraserBtn");
+    els.brushColorSelect = document.getElementById("brushColorSelect");
+    els.brushSizeSelect = document.getElementById("brushSizeSelect");
     els.undoBtn = document.getElementById("undoBtn");
     els.redoBtn = document.getElementById("redoBtn");
     els.zoomOutBtn = document.getElementById("zoomOutBtn");
@@ -171,7 +176,16 @@ const Workspace = (() => {
     els.addBtn.addEventListener("click", () => setPointMode("add"));
     els.lockBtn.addEventListener("click", () => setPointMode("lock"));
     els.penBtn.addEventListener("click", () => toggleCommentTool("pen"));
+    els.highlighterBtn.addEventListener("click", () => toggleCommentTool("highlighter"));
     els.eraserBtn.addEventListener("click", () => toggleCommentTool("eraser"));
+    els.brushColorSelect.addEventListener("change", () => {
+      brushColor = els.brushColorSelect.value;
+      scheduleAutoSave();
+    });
+    els.brushSizeSelect.addEventListener("change", () => {
+      brushWidth = Number(els.brushSizeSelect.value) || 5;
+      scheduleAutoSave();
+    });
 
     els.undoBtn.addEventListener("click", undo);
     els.redoBtn.addEventListener("click", redo);
@@ -365,6 +379,10 @@ const Workspace = (() => {
 
     pointMode = state.pointMode || "lock";
     commentTool = "none";
+    brushColor = state.brushColor || "#ff0000";
+    brushWidth = Number(state.brushWidth || 5);
+    els.brushColorSelect.value = brushColor;
+    els.brushSizeSelect.value = String(brushWidth);
     showOrderLabels = Boolean(state.showOrderLabels);
     zoomLevel = Number(state.zoomLevel || 1);
 
@@ -565,6 +583,8 @@ const Workspace = (() => {
 
     if (commentTool === "pen") {
       setStatus("Pen ON: Apple Pencil draws; finger scrolls.");
+    } else if (commentTool === "highlighter") {
+      setStatus("Highlighter ON: Apple Pencil highlights; finger scrolls.");
     } else if (commentTool === "eraser") {
       setStatus("Eraser ON: Apple Pencil erases; finger scrolls.");
     } else {
@@ -579,12 +599,14 @@ const Workspace = (() => {
       els.addBtn,
       els.lockBtn,
       els.penBtn,
+      els.highlighterBtn,
       els.eraserBtn
     ].forEach(button => button.classList.remove("activeTool"));
 
     if (pointMode === "add") els.addBtn.classList.add("activeTool");
     if (pointMode === "lock") els.lockBtn.classList.add("activeTool");
     if (commentTool === "pen") els.penBtn.classList.add("activeTool");
+    if (commentTool === "highlighter") els.highlighterBtn.classList.add("activeTool");
     if (commentTool === "eraser") els.eraserBtn.classList.add("activeTool");
     els.commentCanvas.classList.toggle("inkActive", commentTool !== "none");
   }
@@ -1579,13 +1601,20 @@ const Workspace = (() => {
         const midX = (lastCommentX + position.x) / 2;
         const midY = (lastCommentY + position.y) / 2;
 
+        context.globalAlpha = 1;
+
         if (commentTool === "eraser") {
           context.globalCompositeOperation = "destination-out";
           context.lineWidth = 36;
+        } else if (commentTool === "highlighter") {
+          context.globalCompositeOperation = "source-over";
+          context.globalAlpha = 0.28;
+          context.strokeStyle = brushColor;
+          context.lineWidth = brushWidth * 4;
         } else {
           context.globalCompositeOperation = "source-over";
-          context.strokeStyle = "#ff0000";
-          context.lineWidth = 5 * (0.82 + ((lastCommentPressure + pressure) / 2) * 0.36);
+          context.strokeStyle = brushColor;
+          context.lineWidth = brushWidth * (0.82 + ((lastCommentPressure + pressure) / 2) * 0.36);
         }
 
         context.beginPath();
@@ -1593,6 +1622,7 @@ const Workspace = (() => {
         context.quadraticCurveTo(lastCommentX, lastCommentY, midX, midY);
         context.lineTo(position.x, position.y);
         context.stroke();
+        context.globalAlpha = 1;
 
         lastCommentX = position.x;
         lastCommentY = position.y;
@@ -2076,6 +2106,8 @@ const Workspace = (() => {
       zoomLevel,
       selectedDataId: els.dataSelect.value,
       commentImageData,
+      brushColor,
+      brushWidth,
       scrollLeft: els.drawingWrapper.scrollLeft,
       scrollTop: els.drawingWrapper.scrollTop
     };

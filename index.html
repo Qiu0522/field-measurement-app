@@ -83,6 +83,7 @@
       <button id="lockBtn" class="toolbarButton" type="button">🔒 Lock Points</button>
 
       <button id="penBtn" class="toolbarButton iconButton" type="button" title="Pen">✏️</button>
+      <button id="highlighterBtn" class="toolbarButton" type="button" title="Highlighter">🖍 Highlighter</button>
       <button id="eraserBtn" class="toolbarButton iconButton" type="button" title="Eraser">
         <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor"
              stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
@@ -90,6 +91,26 @@
           <path d="M6 11L13 18"/>
         </svg>
       </button>
+
+      <label class="compactLabel brushControl">
+        Color
+        <select id="brushColorSelect" aria-label="Brush color">
+          <option value="#ff0000">Red</option>
+          <option value="#0066ff">Blue</option>
+          <option value="#111111">Black</option>
+          <option value="#00a040">Green</option>
+          <option value="#ffd400">Yellow</option>
+        </select>
+      </label>
+
+      <label class="compactLabel brushControl">
+        Size
+        <select id="brushSizeSelect" aria-label="Brush size">
+          <option value="3">Thin</option>
+          <option value="5" selected>Medium</option>
+          <option value="8">Thick</option>
+        </select>
+      </label>
 
       <button id="undoBtn" class="toolbarButton iconButton" type="button" title="Undo">⟲</button>
       <button id="redoBtn" class="toolbarButton iconButton" type="button" title="Redo">⟳</button>

@@ -257,6 +257,11 @@ button {
   max-width: 240px;
 }
 
+.brushControl select {
+  min-width: 78px;
+  max-width: 96px;
+}
+
 .saveIndicator {
   padding: 3px 7px;
   border-radius: 12px;
