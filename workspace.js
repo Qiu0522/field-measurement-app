@@ -40,6 +40,8 @@ const Workspace = (() => {
   let lastCommentPressure = 0.5;
   let commentBeforeStroke = "";
   let commentImageData = "";
+  let commentStrokes = [];
+  let currentCommentStroke = null;
   let commentFingerPan = null;
 
   let measurementCallback = null;
@@ -91,6 +93,7 @@ const Workspace = (() => {
     els.drawingImage = document.getElementById("drawingImage");
     els.pdfCanvas = document.getElementById("pdfCanvas");
     els.commentCanvas = document.getElementById("commentCanvas");
+    els.liveInkCanvas = document.getElementById("liveInkCanvas");
 
     els.pointContextMenu = document.getElementById("pointContextMenu");
     els.pointEditAction = document.getElementById("pointEditAction");
@@ -408,6 +411,7 @@ const Workspace = (() => {
     zoomLevel = Number(state.zoomLevel || 1);
 
     commentImageData = state.commentImageData || "";
+    commentStrokes = clone(state.commentStrokes || []);
     undoStack = [];
     redoStack = [];
     updateUndoRedoButtons();
@@ -433,6 +437,7 @@ const Workspace = (() => {
     if (commentImageData) {
       await restoreCommentImage(commentImageData);
     }
+    renderStoredStrokes();
 
     applyZoom();
 
@@ -517,6 +522,10 @@ const Workspace = (() => {
     els.commentCanvas.height = height;
     els.commentCanvas.style.width = width + "px";
     els.commentCanvas.style.height = height + "px";
+    els.liveInkCanvas.width = width;
+    els.liveInkCanvas.height = height;
+    els.liveInkCanvas.style.width = width + "px";
+    els.liveInkCanvas.style.height = height + "px";
   }
 
   function renderDataSelect(selectedId = null) {
@@ -630,7 +639,7 @@ const Workspace = (() => {
     if (commentTool === "pen") els.penBtn.classList.add("activeTool");
     if (commentTool === "highlighter") els.highlighterBtn.classList.add("activeTool");
     if (commentTool === "eraser") els.eraserBtn.classList.add("activeTool");
-    els.commentCanvas.classList.toggle("inkActive", commentTool !== "none");
+    els.liveInkCanvas.classList.toggle("inkActive", commentTool !== "none");
     els.drawingArea.classList.toggle("inkMode", commentTool !== "none");
     els.drawingWrapper.classList.toggle("inkMode", commentTool !== "none");
   }
@@ -1691,13 +1700,14 @@ const Workspace = (() => {
   }
 
   function bindCommentCanvas() {
+    const inkCanvas = els.liveInkCanvas;
     ["contextmenu", "selectstart", "dragstart"].forEach(type => {
       els.drawingArea.addEventListener(type, event => {
         if (commentTool !== "none") event.preventDefault();
       });
     });
 
-    els.commentCanvas.addEventListener("pointerdown", event => {
+    inkCanvas.addEventListener("pointerdown", event => {
       if (commentTool === "none") return;
 
       // In ink mode a finger pans the drawing, while Pencil only writes.
@@ -1710,7 +1720,7 @@ const Workspace = (() => {
           left: els.drawingWrapper.scrollLeft,
           top: els.drawingWrapper.scrollTop
         };
-        try { els.commentCanvas.setPointerCapture(event.pointerId); } catch (_) {}
+        try { inkCanvas.setPointerCapture(event.pointerId); } catch (_) {}
         return;
       }
 
@@ -1719,21 +1729,30 @@ const Workspace = (() => {
       event.preventDefault();
 
       try {
-        els.commentCanvas.setPointerCapture(event.pointerId);
+        inkCanvas.setPointerCapture(event.pointerId);
       } catch (_) {}
 
       // Reuse the already-saved previous image instead of encoding the huge
       // canvas when Pencil first touches the screen.
       commentBeforeStroke = commentImageData;
       isDrawingComment = true;
+      currentCommentStroke = {
+        tool: commentTool,
+        color: brushColor,
+        width: brushWidth,
+        points: []
+      };
 
       const position = getCanvasPosition(event);
       lastCommentX = position.x;
       lastCommentY = position.y;
       lastCommentPressure = normalisePressure(event);
+      currentCommentStroke.points.push({
+        x: lastCommentX, y: lastCommentY, pressure: lastCommentPressure
+      });
     });
 
-    els.commentCanvas.addEventListener("pointermove", event => {
+    inkCanvas.addEventListener("pointermove", event => {
       if (commentFingerPan && event.pointerId === commentFingerPan.pointerId) {
         event.preventDefault();
         els.drawingWrapper.scrollLeft =
@@ -1747,7 +1766,7 @@ const Workspace = (() => {
       if (!["pen", "mouse"].includes(event.pointerType)) return;
 
       event.preventDefault();
-      const context = els.commentCanvas.getContext("2d");
+      const context = inkCanvas.getContext("2d");
       context.lineCap = "round";
       context.lineJoin = "round";
 
@@ -1761,6 +1780,7 @@ const Workspace = (() => {
         ...getCanvasPosition(sample),
         pressure: normalisePressure(sample)
       }));
+      currentCommentStroke.points.push(...positions);
       const averagePressure = positions.reduce(
         (sum, item) => sum + item.pressure,
         lastCommentPressure
@@ -1800,14 +1820,14 @@ const Workspace = (() => {
       context.globalAlpha = 1;
     });
 
-    els.commentCanvas.addEventListener("pointerup", event => {
+    inkCanvas.addEventListener("pointerup", event => {
       if (commentFingerPan && event.pointerId === commentFingerPan.pointerId) {
         commentFingerPan = null;
         return;
       }
       finishStroke();
     });
-    els.commentCanvas.addEventListener("pointercancel", event => {
+    inkCanvas.addEventListener("pointercancel", event => {
       if (commentFingerPan && event.pointerId === commentFingerPan.pointerId) {
         commentFingerPan = null;
         return;
@@ -1821,19 +1841,66 @@ const Workspace = (() => {
     return pressure > 0 ? Math.max(0.05, Math.min(1, pressure)) : 0.5;
   }
 
+  function renderStoredStrokes() {
+    const context = els.commentCanvas.getContext("2d");
+    const drawVectors = () => commentStrokes.forEach(stroke => drawVectorStroke(context, stroke));
+    context.clearRect(0, 0, els.commentCanvas.width, els.commentCanvas.height);
+
+    if (commentImageData) {
+      const image = new Image();
+      image.onload = () => {
+        context.drawImage(image, 0, 0);
+        drawVectors();
+      };
+      image.src = commentImageData;
+    } else {
+      drawVectors();
+    }
+  }
+
+  function drawVectorStroke(context, stroke) {
+    const points = stroke.points || [];
+    if (points.length < 2) return;
+    context.save();
+    context.lineJoin = "round";
+    context.lineCap = stroke.tool === "highlighter" ? "butt" : "round";
+    context.globalAlpha = stroke.tool === "highlighter" ? 0.14 : 1;
+    context.globalCompositeOperation = stroke.tool === "eraser"
+      ? "destination-out"
+      : stroke.tool === "highlighter" ? "destination-over" : "source-over";
+    context.strokeStyle = stroke.color || "#ff0000";
+    context.lineWidth = stroke.tool === "eraser" ? 36
+      : stroke.tool === "highlighter" ? (stroke.width || 5) * 4
+      : stroke.width || 5;
+    context.beginPath();
+    context.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i += 1) {
+      const previous = points[i - 1];
+      const current = points[i];
+      context.quadraticCurveTo(
+        previous.x, previous.y,
+        (previous.x + current.x) / 2,
+        (previous.y + current.y) / 2
+      );
+    }
+    context.lineTo(points[points.length - 1].x, points[points.length - 1].y);
+    context.stroke();
+    context.restore();
+  }
+
   function finishStroke() {
     if (!isDrawingComment) return;
 
     isDrawingComment = false;
-    const after = els.commentCanvas.toDataURL();
-
-    pushUndo({
-      type: "comment",
-      before: commentBeforeStroke,
-      after
-    });
-
-    commentImageData = after;
+    const stroke = currentCommentStroke;
+    currentCommentStroke = null;
+    els.liveInkCanvas.getContext("2d").clearRect(
+      0, 0, els.liveInkCanvas.width, els.liveInkCanvas.height
+    );
+    if (!stroke || stroke.points.length < 2) return;
+    commentStrokes.push(stroke);
+    renderStoredStrokes();
+    pushUndo({ type: "vectorComment", stroke, index: commentStrokes.length - 1 });
     scheduleAutoSave();
   }
 
@@ -1951,6 +2018,11 @@ const Workspace = (() => {
       restoreCommentImage(action.before);
     }
 
+    if (action.type === "vectorComment") {
+      commentStrokes.splice(action.index, 1);
+      renderStoredStrokes();
+    }
+
     redoStack.push(action);
     updateUndoRedoButtons();
     scheduleAutoSave();
@@ -2017,6 +2089,11 @@ const Workspace = (() => {
 
     if (action.type === "comment") {
       restoreCommentImage(action.after);
+    }
+
+    if (action.type === "vectorComment") {
+      commentStrokes.splice(action.index, 0, action.stroke);
+      renderStoredStrokes();
     }
 
     undoStack.push(action);
@@ -2294,6 +2371,7 @@ const Workspace = (() => {
       zoomLevel,
       selectedDataId: els.dataSelect.value,
       commentImageData,
+      commentStrokes,
       brushColor,
       brushWidth,
       scrollLeft: els.drawingWrapper.scrollLeft,
