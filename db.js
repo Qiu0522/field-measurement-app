@@ -2,8 +2,11 @@
 
 const ProjectDB = (() => {
   const DB_NAME = "FieldMeasurementV4";
-  const DB_VERSION = 1;
-  const STORE_NAME = "projects";
+  const DB_VERSION = 2;
+
+  const PROJECTS = "projects";
+  const FOLDERS = "folders";
+  const ASSETS = "assets";
 
   let dbPromise = null;
 
@@ -15,15 +18,65 @@ const ProjectDB = (() => {
 
       request.onupgradeneeded = event => {
         const db = event.target.result;
+        const transaction = event.target.transaction;
 
-        if (!db.objectStoreNames.contains(STORE_NAME)) {
-          const store = db.createObjectStore(STORE_NAME, {
-            keyPath: "id"
-          });
+        let projectStore;
 
-          store.createIndex("updatedAt", "updatedAt");
-          store.createIndex("tower", "tower");
-          store.createIndex("name", "name");
+        if (!db.objectStoreNames.contains(PROJECTS)) {
+          projectStore = db.createObjectStore(PROJECTS, { keyPath: "id" });
+          projectStore.createIndex("updatedAt", "updatedAt");
+          projectStore.createIndex("name", "name");
+          projectStore.createIndex("folderId", "folderId");
+        } else {
+          projectStore = transaction.objectStore(PROJECTS);
+
+          if (!projectStore.indexNames.contains("folderId")) {
+            projectStore.createIndex("folderId", "folderId");
+          }
+        }
+
+        if (!db.objectStoreNames.contains(FOLDERS)) {
+          const folderStore = db.createObjectStore(FOLDERS, { keyPath: "id" });
+          folderStore.createIndex("parentId", "parentId");
+          folderStore.createIndex("updatedAt", "updatedAt");
+          folderStore.createIndex("name", "name");
+        }
+
+        if (!db.objectStoreNames.contains(ASSETS)) {
+          db.createObjectStore(ASSETS, { keyPath: "projectId" });
+        }
+
+        /*
+          Existing Version 4 records may contain a large pdfData ArrayBuffer.
+          Move it to the asset store once, so ordinary autosaves only write
+          the much smaller project state.
+        */
+        if (event.oldVersion < 2 && projectStore) {
+          const assetStore = transaction.objectStore(ASSETS);
+          const cursorRequest = projectStore.openCursor();
+
+          cursorRequest.onsuccess = cursorEvent => {
+            const cursor = cursorEvent.target.result;
+            if (!cursor) return;
+
+            const project = cursor.value;
+
+            if (project.pdfData) {
+              assetStore.put({
+                projectId: project.id,
+                pdfData: project.pdfData
+              });
+
+              delete project.pdfData;
+              project.folderId = project.folderId || null;
+              cursor.update(project);
+            } else if (project.folderId === undefined) {
+              project.folderId = null;
+              cursor.update(project);
+            }
+
+            cursor.continue();
+          };
         }
       };
 
@@ -34,87 +87,113 @@ const ProjectDB = (() => {
     return dbPromise;
   }
 
-  async function runTransaction(mode, callback) {
+  async function requestResult(storeName, mode, operation) {
     const db = await open();
 
     return new Promise((resolve, reject) => {
-      const transaction = db.transaction(STORE_NAME, mode);
-      const store = transaction.objectStore(STORE_NAME);
+      const tx = db.transaction(storeName, mode);
+      const store = tx.objectStore(storeName);
+      const request = operation(store);
 
-      let result;
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  }
+
+  async function transactionComplete(storeNames, mode, callback) {
+    const db = await open();
+
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(storeNames, mode);
 
       try {
-        result = callback(store);
+        callback(tx);
       } catch (error) {
         reject(error);
         return;
       }
 
-      transaction.oncomplete = () => resolve(result);
-      transaction.onerror = () => reject(transaction.error);
-      transaction.onabort = () => reject(transaction.error);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
     });
   }
 
   async function getAllProjects() {
-    const db = await open();
+    const projects = await requestResult(
+      PROJECTS,
+      "readonly",
+      store => store.getAll()
+    );
 
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction(STORE_NAME, "readonly");
-      const store = transaction.objectStore(STORE_NAME);
-      const request = store.getAll();
-
-      request.onsuccess = () => {
-        const projects = request.result || [];
-        projects.sort((a, b) => b.updatedAt - a.updatedAt);
-        resolve(projects);
-      };
-
-      request.onerror = () => reject(request.error);
-    });
+    return (projects || []).sort((a, b) => b.updatedAt - a.updatedAt);
   }
 
   async function getProject(id) {
-    const db = await open();
+    const project = await requestResult(
+      PROJECTS,
+      "readonly",
+      store => store.get(id)
+    );
 
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction(STORE_NAME, "readonly");
-      const store = transaction.objectStore(STORE_NAME);
-      const request = store.get(id);
+    if (!project) return null;
 
-      request.onsuccess = () => resolve(request.result || null);
-      request.onerror = () => reject(request.error);
-    });
-  }
+    const asset = await requestResult(
+      ASSETS,
+      "readonly",
+      store => store.get(id)
+    );
 
-  async function saveProject(project) {
-    project.updatedAt = Date.now();
-
-    await runTransaction("readwrite", store => {
-      store.put(project);
-    });
+    if (asset?.pdfData) {
+      project.pdfData = asset.pdfData;
+    }
 
     return project;
   }
 
+  async function saveProject(project) {
+    const record = {
+      ...project,
+      folderId: project.folderId || null,
+      updatedAt: Date.now()
+    };
+
+    const pdfData = record.pdfData;
+    delete record.pdfData;
+
+    const stores = pdfData
+      ? [PROJECTS, ASSETS]
+      : [PROJECTS];
+
+    await transactionComplete(stores, "readwrite", tx => {
+      tx.objectStore(PROJECTS).put(record);
+
+      if (pdfData) {
+        tx.objectStore(ASSETS).put({
+          projectId: record.id,
+          pdfData
+        });
+      }
+    });
+
+    project.updatedAt = record.updatedAt;
+    return project;
+  }
+
   async function deleteProject(id) {
-    await runTransaction("readwrite", store => {
-      store.delete(id);
+    await transactionComplete([PROJECTS, ASSETS], "readwrite", tx => {
+      tx.objectStore(PROJECTS).delete(id);
+      tx.objectStore(ASSETS).delete(id);
     });
   }
 
   async function duplicateProject(id) {
     const original = await getProject(id);
+    if (!original) throw new Error("Project not found.");
 
-    if (!original) {
-      throw new Error("Project not found.");
-    }
-
-    const copy = structuredCloneProject(original);
-    copy.id = crypto.randomUUID
-      ? crypto.randomUUID()
-      : "project_" + Date.now() + "_" + Math.random().toString(16).slice(2);
-
+    const copy = cloneProject(original);
+    copy.id = makeId("project");
     copy.name = original.name + " Copy";
     copy.createdAt = Date.now();
     copy.updatedAt = Date.now();
@@ -123,14 +202,61 @@ const ProjectDB = (() => {
     return copy;
   }
 
-  function structuredCloneProject(project) {
+  async function getAllFolders() {
+    const folders = await requestResult(
+      FOLDERS,
+      "readonly",
+      store => store.getAll()
+    );
+
+    return (folders || []).sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { numeric: true })
+    );
+  }
+
+  async function saveFolder(folder) {
+    const record = {
+      ...folder,
+      parentId: folder.parentId || null,
+      updatedAt: Date.now()
+    };
+
+    await requestResult(
+      FOLDERS,
+      "readwrite",
+      store => store.put(record)
+    );
+
+    return record;
+  }
+
+  async function deleteFolder(folderId) {
+    const projects = await getAllProjects();
+    const folders = await getAllFolders();
+
+    const hasProjects = projects.some(project => project.folderId === folderId);
+    const hasSubfolders = folders.some(folder => folder.parentId === folderId);
+
+    if (hasProjects || hasSubfolders) {
+      throw new Error("Folder is not empty.");
+    }
+
+    await requestResult(
+      FOLDERS,
+      "readwrite",
+      store => store.delete(folderId)
+    );
+  }
+
+  function cloneProject(project) {
     if (typeof structuredClone === "function") {
       return structuredClone(project);
     }
 
-    const clone = { ...project };
-
-    clone.state = JSON.parse(JSON.stringify(project.state || {}));
+    const clone = {
+      ...project,
+      state: JSON.parse(JSON.stringify(project.state || {}))
+    };
 
     if (project.pdfData instanceof ArrayBuffer) {
       clone.pdfData = project.pdfData.slice(0);
@@ -139,12 +265,22 @@ const ProjectDB = (() => {
     return clone;
   }
 
+  function makeId(prefix) {
+    return crypto.randomUUID
+      ? crypto.randomUUID()
+      : prefix + "_" + Date.now() + "_" + Math.random().toString(16).slice(2);
+  }
+
   return {
     open,
     getAllProjects,
     getProject,
     saveProject,
     deleteProject,
-    duplicateProject
+    duplicateProject,
+    getAllFolders,
+    saveFolder,
+    deleteFolder,
+    makeId
   };
 })();

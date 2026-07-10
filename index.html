@@ -22,28 +22,36 @@
     <header class="homeHeader">
       <div>
         <h1>Field Measurement</h1>
-        <p>Projects are saved automatically on this device.</p>
+        <p>Folders and work files are saved automatically on this device.</p>
       </div>
 
-      <button id="newProjectBtn" class="primaryButton largeButton" type="button">
-        ＋ New Work File
-      </button>
+      <div class="libraryHeaderActions">
+        <button id="newFolderBtn" class="secondaryButton largeButton" type="button">
+          ＋ New Folder
+        </button>
+
+        <button id="newProjectBtn" class="primaryButton largeButton" type="button">
+          ＋ New File
+        </button>
+      </div>
     </header>
 
+    <div class="libraryNavigation">
+      <button id="upFolderBtn" class="toolbarButton" type="button" disabled>← Up</button>
+      <div id="folderBreadcrumb" class="folderBreadcrumb"></div>
+    </div>
+
     <div class="homeTools">
-      <input id="projectSearch" type="search" placeholder="Search tower, floor, or project name">
-      <select id="towerFilter">
-        <option value="">All towers</option>
-      </select>
+      <input id="projectSearch" type="search" placeholder="Search folders or work files">
     </div>
 
     <div id="emptyLibrary" class="emptyState">
       <div class="emptyIcon">📁</div>
-      <h2>No work files yet</h2>
-      <p>Choose “New Work File” to import a PDF or create a blank drawing.</p>
+      <h2>This folder is empty</h2>
+      <p>Add a folder, import a PDF, or create a blank drawing.</p>
     </div>
 
-    <div id="projectGrid" class="projectGrid"></div>
+    <div id="libraryGrid" class="libraryGrid"></div>
   </section>
 
   <!-- ======================= WORKSPACE ======================= -->
@@ -98,10 +106,10 @@
     <button id="blankChoice" type="button">⬜ Blank Drawing</button>
   </div>
 
-  <div id="projectContextMenu" class="popupMenu hidden">
-    <button id="renameProjectAction" type="button">Rename</button>
-    <button id="duplicateProjectAction" type="button">Duplicate</button>
-    <button id="deleteProjectAction" class="dangerText" type="button">Delete</button>
+  <div id="libraryContextMenu" class="popupMenu hidden">
+    <button id="renameLibraryAction" type="button">Rename</button>
+    <button id="duplicateLibraryAction" type="button">Duplicate</button>
+    <button id="deleteLibraryAction" class="dangerText" type="button">Delete</button>
   </div>
 
   <div id="pointContextMenu" class="popupMenu hidden">
@@ -112,23 +120,29 @@
   </div>
 
   <!-- ======================== MODALS ======================== -->
+  <div id="folderModal" class="modalBackdrop hidden">
+    <div class="modalCard">
+      <h2>New Folder</h2>
+
+      <label>
+        Folder name
+        <input id="folderNameInput" type="text" placeholder="Tower 3">
+      </label>
+
+      <div class="modalActions">
+        <button id="cancelFolderModal" type="button">Cancel</button>
+        <button id="confirmFolderModal" class="primaryButton" type="button">Create</button>
+      </div>
+    </div>
+  </div>
+
   <div id="projectModal" class="modalBackdrop hidden">
     <div class="modalCard">
       <h2 id="projectModalTitle">New Work File</h2>
 
       <label>
         Work file name
-        <input id="projectNameInput" type="text" placeholder="Tower A - Level 12">
-      </label>
-
-      <label>
-        Tower / building
-        <input id="towerInput" type="text" placeholder="Tower A">
-      </label>
-
-      <label>
-        Floor / level
-        <input id="floorInput" type="text" placeholder="Level 12">
+        <input id="projectNameInput" type="text" placeholder="Level 11">
       </label>
 
       <div id="blankSizeFields" class="hidden">
@@ -157,41 +171,54 @@
     <div class="modalCard measurementCard">
       <h2 id="measurementTitle">Enter Measurement</h2>
 
-      <input id="measurementDisplay" type="text" readonly tabindex="-1" placeholder="Example: -26 3/8">
+      <input
+        id="measurementDisplay"
+        type="text"
+        readonly
+        tabindex="-1"
+        inputmode="none"
+        placeholder="Example: -26_3/8"
+        aria-label="Measurement"
+      >
 
-      <div class="keypad">
-        <button data-key="7">7</button>
-        <button data-key="8">8</button>
-        <button data-key="9">9</button>
-        <button data-action="backspace">⌫</button>
+      <div class="measurementKeypad">
+        <div class="numberPad">
+          <button data-key="7">7</button>
+          <button data-key="8">8</button>
+          <button data-key="9">9</button>
 
-        <button data-key="4">4</button>
-        <button data-key="5">5</button>
-        <button data-key="6">6</button>
-        <button data-key=" ">Space</button>
+          <button data-key="4">4</button>
+          <button data-key="5">5</button>
+          <button data-key="6">6</button>
 
-        <button data-key="1">1</button>
-        <button data-key="2">2</button>
-        <button data-key="3">3</button>
-        <button data-key="/">/</button>
+          <button data-key="1">1</button>
+          <button data-key="2">2</button>
+          <button data-key="3">3</button>
 
-        <button data-key="0">0</button>
-        <button data-key=".">.</button>
-        <button data-action="negative">−</button>
-        <button data-action="clear">Clear</button>
+          <button data-fraction="1/4">1/4</button>
+          <button data-fraction="1/8">1/8</button>
+          <button data-fraction="1/16">1/16</button>
+        </div>
 
-        <button data-fraction="1/8">1/8</button>
-        <button data-fraction="1/4">1/4</button>
-        <button data-fraction="3/8">3/8</button>
-        <button data-fraction="1/2">1/2</button>
+        <div class="operatorPad">
+          <button data-action="backspace" class="operatorButton" title="Backspace">⌫</button>
+          <button data-key="/" class="operatorButton">/</button>
+          <button data-action="negative" class="operatorButton">−</button>
+          <button data-action="clear" class="operatorButton clearButton" title="Clear">🗑</button>
+        </div>
 
-        <button data-fraction="5/8">5/8</button>
-        <button data-fraction="3/4">3/4</button>
-        <button data-fraction="7/8">7/8</button>
-        <button data-action="confirm" class="primaryButton">OK</button>
+        <button data-key=" " class="spaceButton">SPACE</button>
+
+        <div class="measurementActions">
+          <button id="cancelMeasurementBtn" type="button">Cancel</button>
+          <button data-action="confirm" class="confirmMeasurementButton" type="button">✓ OK</button>
+        </div>
       </div>
 
-      <button id="cancelMeasurementBtn" class="fullWidthButton" type="button">Cancel</button>
+      <p class="measurementHint">
+        A typed space is shown as an underscore while entering, for example
+        <strong>26_3/8</strong>. It is saved and exported as <strong>26 3/8</strong>.
+      </p>
     </div>
   </div>
 

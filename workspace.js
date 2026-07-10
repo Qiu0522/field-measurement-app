@@ -25,6 +25,8 @@ const Workspace = (() => {
   let draggedPoint = null;
   let dragStartX = 0;
   let dragStartY = 0;
+  let dragLockedScrollLeft = 0;
+  let dragLockedScrollTop = 0;
 
   let isDrawingComment = false;
   let lastCommentX = 0;
@@ -33,6 +35,7 @@ const Workspace = (() => {
   let commentImageData = "";
 
   let measurementCallback = null;
+  let measurementRawValue = "";
 
   let undoStack = [];
   let redoStack = [];
@@ -98,8 +101,18 @@ const Workspace = (() => {
 
   function bindEvents() {
     els.backHomeBtn.addEventListener("click", async () => {
-      await closeProject();
-      App.showLibrary();
+      els.backHomeBtn.disabled = true;
+      setStatus("Saving…");
+
+      try {
+        await closeProject();
+        App.showLibrary();
+      } catch (error) {
+        console.error(error);
+        alert("Could not save this work file.");
+      } finally {
+        els.backHomeBtn.disabled = false;
+      }
     });
 
     els.dataSelect.addEventListener("change", handleDataSelectChange);
@@ -119,7 +132,10 @@ const Workspace = (() => {
     els.exportPdfBtn.addEventListener("click", exportPDF);
 
     els.drawingArea.addEventListener("click", handleDrawingClick);
-    els.drawingWrapper.addEventListener("scroll", scheduleAutoSave, { passive: true });
+    /*
+      Scrolling no longer triggers a database write. Scroll position is
+      captured during the next content save or when returning to Library.
+    */
 
     els.drawingWrapper.addEventListener("wheel", event => {
       if (!event.ctrlKey && !event.metaKey) return;
@@ -145,10 +161,13 @@ const Workspace = (() => {
       clearPointSelection();
 
       const element = findPointElement(contextPoint.uid);
-      if (element) element.classList.add("selected");
+      if (element) {
+        element.classList.add("selected");
+        element.classList.add("movingPoint");
+      }
 
       updateToolButtons();
-      setStatus("Move selected point: drag it or tap its new location.");
+      setStatus("Move selected point: drag it or tap its new location. Page scrolling is locked while dragging.");
     });
 
     els.pointAssignSideAction.addEventListener("click", () => {
@@ -169,42 +188,29 @@ const Workspace = (() => {
 
     els.measurementModal.querySelectorAll("[data-key]").forEach(button => {
       button.addEventListener("click", () => {
-        els.measurementDisplay.value += button.dataset.key;
+        appendMeasurementValue(button.dataset.key);
       });
     });
 
     els.measurementModal.querySelectorAll("[data-fraction]").forEach(button => {
       button.addEventListener("click", () => {
-        if (els.measurementDisplay.value &&
-            !els.measurementDisplay.value.endsWith(" ")) {
-          els.measurementDisplay.value += " ";
-        }
-
-        els.measurementDisplay.value += button.dataset.fraction;
+        appendMeasurementFraction(button.dataset.fraction);
       });
     });
 
     els.measurementModal
       .querySelector('[data-action="backspace"]')
-      .addEventListener("click", () => {
-        els.measurementDisplay.value =
-          els.measurementDisplay.value.slice(0, -1);
-      });
+      .addEventListener("click", measurementBackspace);
 
     els.measurementModal
       .querySelector('[data-action="clear"]')
       .addEventListener("click", () => {
-        els.measurementDisplay.value = "";
+        setMeasurementRawValue("");
       });
 
     els.measurementModal
       .querySelector('[data-action="negative"]')
-      .addEventListener("click", () => {
-        els.measurementDisplay.value =
-          els.measurementDisplay.value.startsWith("-")
-            ? els.measurementDisplay.value.slice(1)
-            : "-" + els.measurementDisplay.value;
-      });
+      .addEventListener("click", toggleMeasurementNegative);
 
     els.measurementModal
       .querySelector('[data-action="confirm"]')
@@ -284,6 +290,7 @@ const Workspace = (() => {
     });
 
     setPointMode(pointMode);
+    isDirty = false;
     setStatus("Project loaded. Changes save automatically.");
     showSaved();
   }
@@ -292,7 +299,13 @@ const Workspace = (() => {
     if (!project) return;
 
     clearTimeout(saveTimer);
-    await saveNow();
+
+    /*
+      Returning to Library must always preserve zoom and scroll position.
+      The save is now small because the PDF asset is stored separately and
+      the comment canvas is not re-encoded on every save.
+    */
+    await saveNow(true);
 
     project = null;
     points = [];
@@ -573,6 +586,11 @@ const Workspace = (() => {
       dragStartX = point.x;
       dragStartY = point.y;
 
+      dragLockedScrollLeft = els.drawingWrapper.scrollLeft;
+      dragLockedScrollTop = els.drawingWrapper.scrollTop;
+      els.drawingWrapper.classList.add("pointDragActive");
+      element.classList.add("movingPoint");
+
       try {
         element.setPointerCapture(event.pointerId);
       } catch (_) {}
@@ -582,6 +600,10 @@ const Workspace = (() => {
       if (!isDraggingPoint || draggedPoint !== point) return;
 
       event.preventDefault();
+      event.stopPropagation();
+
+      els.drawingWrapper.scrollLeft = dragLockedScrollLeft;
+      els.drawingWrapper.scrollTop = dragLockedScrollTop;
 
       const position = getDrawingPosition(event);
       point.x = position.x;
@@ -604,6 +626,8 @@ const Workspace = (() => {
       isDraggingPoint = false;
       draggedPoint = null;
       movingPoint = null;
+      els.drawingWrapper.classList.remove("pointDragActive");
+      element.classList.remove("movingPoint");
       clearPointSelection();
 
       if (distance > 0) {
@@ -626,6 +650,20 @@ const Workspace = (() => {
 
         scheduleAutoSave();
       }
+    });
+
+    element.addEventListener("pointercancel", () => {
+      if (draggedPoint !== point) return;
+
+      point.x = dragStartX;
+      point.y = dragStartY;
+      isDraggingPoint = false;
+      draggedPoint = null;
+      movingPoint = null;
+      els.drawingWrapper.classList.remove("pointDragActive");
+      element.classList.remove("movingPoint");
+      clearPointSelection();
+      updatePointElement(point);
     });
 
     els.drawingArea.appendChild(element);
@@ -918,8 +956,41 @@ const Workspace = (() => {
     scheduleAutoSave();
   }
 
+  function setMeasurementRawValue(value) {
+    measurementRawValue = String(value || "");
+    els.measurementDisplay.value =
+      measurementRawValue.replace(/ /g, "_");
+  }
+
+  function appendMeasurementValue(value) {
+    setMeasurementRawValue(measurementRawValue + value);
+  }
+
+  function appendMeasurementFraction(fraction) {
+    let nextValue = measurementRawValue;
+
+    if (nextValue && !nextValue.endsWith(" ")) {
+      nextValue += " ";
+    }
+
+    nextValue += fraction;
+    setMeasurementRawValue(nextValue);
+  }
+
+  function measurementBackspace() {
+    setMeasurementRawValue(measurementRawValue.slice(0, -1));
+  }
+
+  function toggleMeasurementNegative() {
+    setMeasurementRawValue(
+      measurementRawValue.startsWith("-")
+        ? measurementRawValue.slice(1)
+        : "-" + measurementRawValue
+    );
+  }
+
   function openMeasurementModal(initialValue, title, callback) {
-    els.measurementDisplay.value = initialValue || "";
+    setMeasurementRawValue(initialValue || "");
     els.measurementTitle.textContent = title;
     measurementCallback = callback;
     els.measurementModal.classList.remove("hidden");
@@ -927,7 +998,7 @@ const Workspace = (() => {
 
   function confirmMeasurement() {
     const callback = measurementCallback;
-    const value = els.measurementDisplay.value;
+    const value = measurementRawValue;
 
     measurementCallback = null;
     els.measurementModal.classList.add("hidden");
@@ -937,6 +1008,7 @@ const Workspace = (() => {
 
   function cancelMeasurement() {
     measurementCallback = null;
+    measurementRawValue = "";
     els.measurementModal.classList.add("hidden");
   }
 
@@ -1304,16 +1376,29 @@ const Workspace = (() => {
     if (!project) return;
 
     isDirty = true;
-    showSaving();
+    els.saveIndicator.textContent = "Unsaved";
+    els.saveIndicator.classList.add("saving");
 
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(saveNow, 600);
+
+    /*
+      Batch rapid field edits into one IndexedDB write.
+      This avoids writing after every tap.
+    */
+    saveTimer = setTimeout(() => {
+      saveNow(false).catch(error => {
+        console.error("Autosave failed:", error);
+        els.saveIndicator.textContent = "Save failed";
+      });
+    }, 1600);
   }
 
-  async function saveNow() {
+  async function saveNow(force = false) {
     if (!project) return;
+    if (!force && !isDirty) return;
 
     clearTimeout(saveTimer);
+    showSaving();
 
     project.state = {
       points,
@@ -1322,15 +1407,18 @@ const Workspace = (() => {
       showOrderLabels,
       zoomLevel,
       selectedDataId: els.dataSelect.value,
-      commentImageData:
-        els.commentCanvas.width
-          ? els.commentCanvas.toDataURL()
-          : commentImageData,
+
+      /*
+        commentImageData is refreshed only when a pen/eraser stroke ends.
+        Avoiding canvas.toDataURL() here removes the largest autosave delay.
+      */
+      commentImageData,
       scrollLeft: els.drawingWrapper.scrollLeft,
       scrollTop: els.drawingWrapper.scrollTop
     };
 
     await ProjectDB.saveProject(project);
+
     isDirty = false;
     showSaved();
   }
@@ -1391,9 +1479,16 @@ const Workspace = (() => {
   }
 
   function clearPointSelection() {
-    els.drawingArea
-      .querySelectorAll(".point.selected")
-      .forEach(element => element.classList.remove("selected"));
+    document
+      .querySelectorAll(".point.selected, .point.movingPoint")
+      .forEach(element => {
+        element.classList.remove("selected");
+        element.classList.remove("movingPoint");
+      });
+
+    if (!isDraggingPoint) {
+      els.drawingWrapper.classList.remove("pointDragActive");
+    }
   }
 
   function setStatus(message) {

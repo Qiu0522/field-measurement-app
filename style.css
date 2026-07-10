@@ -106,7 +106,7 @@ button {
   flex: 1;
 }
 
-.projectGrid {
+.libraryGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(245px, 1fr));
   gap: 16px;
@@ -114,7 +114,7 @@ button {
   margin: 0 auto;
 }
 
-.projectCard {
+.libraryCard {
   position: relative;
   min-height: 210px;
   padding: 14px;
@@ -125,7 +125,7 @@ button {
   transition: transform 120ms ease, box-shadow 120ms ease;
 }
 
-.projectCard:hover {
+.libraryCard:hover {
   transform: translateY(-2px);
   box-shadow: 0 7px 18px rgba(0, 0, 0, 0.1);
 }
@@ -426,36 +426,128 @@ button {
 }
 
 .measurementCard {
-  width: min(390px, 97vw);
+  width: min(540px, 97vw);
+  padding: 20px;
+}
+
+.measurementCard h2 {
+  margin-bottom: 12px;
+  text-align: center;
 }
 
 #measurementDisplay {
-  font-size: 27px;
-  text-align: center;
-  background: #fafafa;
-}
-
-.keypad {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 7px;
-  margin-top: 12px;
-}
-
-.keypad button {
-  min-height: 47px;
-  border: 1px solid #a0a4aa;
-  border-radius: 7px;
-  background: #f7f7f7;
-  font-size: 17px;
-}
-
-.fullWidthButton {
   width: 100%;
-  min-height: 42px;
-  margin-top: 10px;
-  border: 1px solid #96999e;
-  border-radius: 7px;
+  min-height: 70px;
+  padding: 10px 14px;
+  border: 2px solid #8d9299;
+  border-radius: 10px;
+  background: #fbfbfc;
+  color: #111;
+  font-size: 42px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-align: center;
+  caret-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.measurementKeypad {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(78px, 1fr);
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.numberPad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 9px;
+}
+
+.operatorPad {
+  display: grid;
+  grid-template-rows: repeat(4, 1fr);
+  gap: 9px;
+}
+
+.measurementKeypad button {
+  min-height: 64px;
+  border: 1px solid #999ea5;
+  border-radius: 10px;
+  background: #f6f7f8;
+  color: #1e1f21;
+  font-size: 27px;
+  font-weight: 600;
+  touch-action: manipulation;
+}
+
+.measurementKeypad button:active {
+  transform: scale(0.97);
+  background: #dfe3e8;
+}
+
+.operatorButton {
+  min-width: 78px;
+}
+
+.clearButton {
+  font-size: 24px !important;
+}
+
+.spaceButton {
+  grid-column: 1 / -1;
+  min-height: 58px !important;
+  font-size: 20px !important;
+  letter-spacing: 2px;
+}
+
+.measurementActions {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.measurementActions button {
+  min-height: 58px;
+  font-size: 20px;
+}
+
+.confirmMeasurementButton {
+  border-color: #18823a !important;
+  background: #1f9445 !important;
+  color: white !important;
+}
+
+.measurementHint {
+  margin: 12px 3px 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+/*
+  While a measurement point is being moved, page scrolling and browser
+  panning are temporarily disabled so the drawing stays fixed.
+*/
+#drawingWrapper.pointDragActive {
+  overflow: hidden !important;
+  touch-action: none !important;
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: auto;
+}
+
+#drawingWrapper.pointDragActive #drawingArea,
+#drawingWrapper.pointDragActive .point {
+  touch-action: none !important;
+}
+
+.point.movingPoint {
+  background: rgba(255, 235, 59, 0.48);
+  outline: 2px solid rgba(70, 70, 70, 0.7);
+  border-radius: 4px;
 }
 
 .sideButtons {
@@ -490,7 +582,7 @@ button {
     flex-direction: column;
   }
 
-  .projectGrid {
+  .libraryGrid {
     grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
   }
 
@@ -505,5 +597,129 @@ button {
 
   .point {
     font-size: 28px;
+  }
+}
+
+
+@media (max-width: 620px) {
+  .measurementCard {
+    width: 98vw;
+    padding: 14px;
+  }
+
+  #measurementDisplay {
+    min-height: 62px;
+    font-size: 35px;
+  }
+
+  .measurementKeypad {
+    grid-template-columns: minmax(0, 3fr) 74px;
+    gap: 7px;
+  }
+
+  .numberPad,
+  .operatorPad {
+    gap: 7px;
+  }
+
+  .measurementKeypad button {
+    min-height: 56px;
+    font-size: 23px;
+  }
+
+  .operatorButton {
+    min-width: 70px;
+  }
+}
+
+
+/* ---------------------- Folder Library ---------------------- */
+
+.libraryHeaderActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.secondaryButton {
+  color: var(--text);
+  background: white;
+  border-color: var(--border);
+}
+
+.libraryNavigation {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 1400px;
+  margin: 0 auto 12px;
+}
+
+.folderBreadcrumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-height: 36px;
+}
+
+.folderBreadcrumb button {
+  padding: 5px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.folderBreadcrumb button:hover {
+  background: #e8edf7;
+}
+
+.libraryGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(245px, 1fr));
+  gap: 16px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.libraryCard {
+  position: relative;
+  min-height: 210px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.libraryCard:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 7px 18px rgba(0, 0, 0, 0.1);
+}
+
+.folderCard {
+  min-height: 185px;
+}
+
+.folderPreview {
+  background: #fff4ce;
+  font-size: 54px;
+}
+
+@media (max-width: 700px) {
+  .homeHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .libraryHeaderActions {
+    width: 100%;
+  }
+
+  .libraryHeaderActions button {
+    flex: 1;
   }
 }

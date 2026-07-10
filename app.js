@@ -2,7 +2,11 @@
 
 const App = (() => {
   let projects = [];
-  let currentMenuProjectId = null;
+  let folders = [];
+
+  let currentFolderId = null;
+  let currentMenuItem = null;
+
   let pendingProjectKind = null;
   let pendingPdfData = null;
 
@@ -12,26 +16,31 @@ const App = (() => {
     els.homeView = document.getElementById("homeView");
     els.workspaceView = document.getElementById("workspaceView");
 
+    els.newFolderBtn = document.getElementById("newFolderBtn");
     els.newProjectBtn = document.getElementById("newProjectBtn");
     els.newProjectMenu = document.getElementById("newProjectMenu");
     els.importPdfChoice = document.getElementById("importPdfChoice");
     els.blankChoice = document.getElementById("blankChoice");
 
+    els.upFolderBtn = document.getElementById("upFolderBtn");
+    els.folderBreadcrumb = document.getElementById("folderBreadcrumb");
     els.projectSearch = document.getElementById("projectSearch");
-    els.towerFilter = document.getElementById("towerFilter");
-    els.projectGrid = document.getElementById("projectGrid");
+    els.libraryGrid = document.getElementById("libraryGrid");
     els.emptyLibrary = document.getElementById("emptyLibrary");
 
-    els.projectContextMenu = document.getElementById("projectContextMenu");
-    els.renameProjectAction = document.getElementById("renameProjectAction");
-    els.duplicateProjectAction = document.getElementById("duplicateProjectAction");
-    els.deleteProjectAction = document.getElementById("deleteProjectAction");
+    els.libraryContextMenu = document.getElementById("libraryContextMenu");
+    els.renameLibraryAction = document.getElementById("renameLibraryAction");
+    els.duplicateLibraryAction = document.getElementById("duplicateLibraryAction");
+    els.deleteLibraryAction = document.getElementById("deleteLibraryAction");
+
+    els.folderModal = document.getElementById("folderModal");
+    els.folderNameInput = document.getElementById("folderNameInput");
+    els.cancelFolderModal = document.getElementById("cancelFolderModal");
+    els.confirmFolderModal = document.getElementById("confirmFolderModal");
 
     els.projectModal = document.getElementById("projectModal");
     els.projectModalTitle = document.getElementById("projectModalTitle");
     els.projectNameInput = document.getElementById("projectNameInput");
-    els.towerInput = document.getElementById("towerInput");
-    els.floorInput = document.getElementById("floorInput");
     els.blankSizeFields = document.getElementById("blankSizeFields");
     els.blankWidthInput = document.getElementById("blankWidthInput");
     els.blankHeightInput = document.getElementById("blankHeightInput");
@@ -43,18 +52,17 @@ const App = (() => {
   }
 
   function bindEvents() {
+    els.newFolderBtn.addEventListener("click", openFolderModal);
+
     els.newProjectBtn.addEventListener("click", event => {
       event.stopPropagation();
-      positionMenu(
-        els.newProjectMenu,
-        event.clientX,
-        event.clientY
-      );
+      positionMenu(els.newProjectMenu, event.clientX, event.clientY, 200, 100);
     });
 
     els.importPdfChoice.addEventListener("click", () => {
       hideMenus();
       pendingProjectKind = "pdf";
+      pendingPdfData = null;
       els.pdfFileInput.value = "";
       els.pdfFileInput.click();
     });
@@ -72,90 +80,126 @@ const App = (() => {
 
       pendingPdfData = await file.arrayBuffer();
       pendingProjectKind = "pdf";
-
-      const baseName = file.name.replace(/\.pdf$/i, "");
-      openProjectModal(baseName);
+      openProjectModal(file.name.replace(/\.pdf$/i, ""));
     });
+
+    els.upFolderBtn.addEventListener("click", goUpFolder);
+    els.projectSearch.addEventListener("input", renderLibrary);
+
+    els.cancelFolderModal.addEventListener("click", closeFolderModal);
+    els.confirmFolderModal.addEventListener("click", createFolder);
 
     els.cancelProjectModal.addEventListener("click", closeProjectModal);
     els.confirmProjectModal.addEventListener("click", createProjectFromModal);
 
-    els.projectSearch.addEventListener("input", renderLibrary);
-    els.towerFilter.addEventListener("change", renderLibrary);
-
-    els.renameProjectAction.addEventListener("click", renameSelectedProject);
-    els.duplicateProjectAction.addEventListener("click", duplicateSelectedProject);
-    els.deleteProjectAction.addEventListener("click", deleteSelectedProject);
+    els.renameLibraryAction.addEventListener("click", renameSelectedItem);
+    els.duplicateLibraryAction.addEventListener("click", duplicateSelectedItem);
+    els.deleteLibraryAction.addEventListener("click", deleteSelectedItem);
 
     document.addEventListener("click", event => {
       if (!els.newProjectMenu.contains(event.target)) {
         els.newProjectMenu.classList.add("hidden");
       }
 
-      if (!els.projectContextMenu.contains(event.target)) {
-        els.projectContextMenu.classList.add("hidden");
+      if (!els.libraryContextMenu.contains(event.target)) {
+        els.libraryContextMenu.classList.add("hidden");
       }
     });
   }
 
   async function start() {
     await ProjectDB.open();
-    await refreshProjects();
+    await refreshLibrary();
     showLibrary();
   }
 
-  async function refreshProjects() {
-    projects = await ProjectDB.getAllProjects();
-    renderTowerFilter();
+  async function refreshLibrary() {
+    [projects, folders] = await Promise.all([
+      ProjectDB.getAllProjects(),
+      ProjectDB.getAllFolders()
+    ]);
+
     renderLibrary();
   }
 
   function renderLibrary() {
-    const search =
-      els.projectSearch.value.trim().toLowerCase();
+    const search = els.projectSearch.value.trim().toLowerCase();
 
-    const tower = els.towerFilter.value;
+    const childFolders = folders
+      .filter(folder => (folder.parentId || null) === currentFolderId)
+      .filter(folder => !search || folder.name.toLowerCase().includes(search));
 
-    const visibleProjects = projects.filter(project => {
-      const searchable = [
-        project.name,
-        project.tower,
-        project.floor
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
+    const childProjects = projects
+      .filter(project => (project.folderId || null) === currentFolderId)
+      .filter(project => !search || project.name.toLowerCase().includes(search));
 
-      return (
-        (!search || searchable.includes(search)) &&
-        (!tower || project.tower === tower)
-      );
+    els.libraryGrid.innerHTML = "";
+
+    childFolders.forEach(folder => {
+      els.libraryGrid.appendChild(createFolderCard(folder));
     });
 
-    els.projectGrid.innerHTML = "";
+    childProjects.forEach(project => {
+      els.libraryGrid.appendChild(createProjectCard(project));
+    });
+
     els.emptyLibrary.classList.toggle(
       "hidden",
-      projects.length > 0
+      childFolders.length + childProjects.length > 0
     );
 
-    visibleProjects.forEach(project => {
-      els.projectGrid.appendChild(
-        createProjectCard(project)
-      );
+    renderBreadcrumb();
+  }
+
+  function createFolderCard(folder) {
+    const card = document.createElement("article");
+    card.className = "libraryCard folderCard";
+
+    const openArea = document.createElement("div");
+    openArea.className = "cardOpenArea";
+
+    const preview = document.createElement("div");
+    preview.className = "projectPreview folderPreview";
+    preview.textContent = "📁";
+
+    const title = document.createElement("h3");
+    title.className = "projectName";
+    title.textContent = folder.name;
+
+    const counts = getFolderCounts(folder.id);
+
+    const meta = document.createElement("p");
+    meta.className = "projectMeta";
+    meta.textContent =
+      `${counts.folders} folders · ${counts.projects} files`;
+
+    openArea.append(preview, title, meta);
+
+    openArea.addEventListener("click", () => {
+      currentFolderId = folder.id;
+      els.projectSearch.value = "";
+      renderLibrary();
     });
+
+    const menuButton = makeMenuButton({
+      type: "folder",
+      id: folder.id
+    });
+
+    card.append(openArea, menuButton);
+    return card;
   }
 
   function createProjectCard(project) {
     const card = document.createElement("article");
-    card.className = "projectCard";
+    card.className = "libraryCard projectCard";
 
     const openArea = document.createElement("div");
     openArea.className = "cardOpenArea";
 
     const preview = document.createElement("div");
     preview.className = "projectPreview";
-    preview.textContent =
-      project.kind === "pdf" ? "📄" : "⬜";
+    preview.textContent = project.kind === "pdf" ? "📄" : "⬜";
 
     const title = document.createElement("h3");
     title.className = "projectName";
@@ -163,16 +207,9 @@ const App = (() => {
 
     const meta = document.createElement("p");
     meta.className = "projectMeta";
-    meta.textContent = [
-      project.tower,
-      project.floor,
-      project.kind === "pdf" ? "PDF" : "Blank"
-    ]
-      .filter(Boolean)
-      .join(" · ");
+    meta.textContent = project.kind === "pdf" ? "PDF" : "Blank drawing";
 
-    const pointCount =
-      project.state?.points?.length || 0;
+    const pointCount = project.state?.points?.length || 0;
 
     const updated = document.createElement("p");
     updated.className = "projectUpdated";
@@ -180,65 +217,138 @@ const App = (() => {
       `${pointCount} points · Updated ${formatDate(project.updatedAt)}`;
 
     openArea.append(preview, title, meta, updated);
+    openArea.addEventListener("click", () => openProject(project.id));
 
-    openArea.addEventListener("click", () => {
-      openProject(project.id);
-    });
-
-    const menuButton = document.createElement("button");
-    menuButton.className = "cardMenuButton";
-    menuButton.type = "button";
-    menuButton.textContent = "⋯";
-    menuButton.title = "Project options";
-
-    menuButton.addEventListener("click", event => {
-      event.stopPropagation();
-      currentMenuProjectId = project.id;
-      positionMenu(
-        els.projectContextMenu,
-        event.clientX,
-        event.clientY
-      );
+    const menuButton = makeMenuButton({
+      type: "project",
+      id: project.id
     });
 
     card.append(openArea, menuButton);
     return card;
   }
 
-  function renderTowerFilter() {
-    const currentValue = els.towerFilter.value;
-    const towers = [
-      ...new Set(
-        projects
-          .map(project => project.tower)
-          .filter(Boolean)
-      )
-    ].sort();
+  function makeMenuButton(item) {
+    const button = document.createElement("button");
+    button.className = "cardMenuButton";
+    button.type = "button";
+    button.textContent = "⋯";
+    button.title = "Options";
 
-    els.towerFilter.innerHTML =
-      '<option value="">All towers</option>';
+    button.addEventListener("click", event => {
+      event.stopPropagation();
+      currentMenuItem = item;
 
-    towers.forEach(tower => {
-      const option = document.createElement("option");
-      option.value = tower;
-      option.textContent = tower;
-      els.towerFilter.appendChild(option);
+      els.duplicateLibraryAction.classList.toggle(
+        "hidden",
+        item.type === "folder"
+      );
+
+      positionMenu(
+        els.libraryContextMenu,
+        event.clientX,
+        event.clientY,
+        200,
+        item.type === "folder" ? 100 : 145
+      );
     });
 
-    if (towers.includes(currentValue)) {
-      els.towerFilter.value = currentValue;
+    return button;
+  }
+
+  function getFolderCounts(folderId) {
+    return {
+      folders: folders.filter(folder => folder.parentId === folderId).length,
+      projects: projects.filter(project => project.folderId === folderId).length
+    };
+  }
+
+  function renderBreadcrumb() {
+    const path = [];
+    let id = currentFolderId;
+
+    while (id) {
+      const folder = folders.find(item => item.id === id);
+      if (!folder) break;
+      path.unshift(folder);
+      id = folder.parentId || null;
     }
+
+    els.folderBreadcrumb.innerHTML = "";
+
+    const rootButton = document.createElement("button");
+    rootButton.type = "button";
+    rootButton.textContent = "Library";
+    rootButton.addEventListener("click", () => {
+      currentFolderId = null;
+      renderLibrary();
+    });
+
+    els.folderBreadcrumb.appendChild(rootButton);
+
+    path.forEach(folder => {
+      const separator = document.createElement("span");
+      separator.textContent = "›";
+
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = folder.name;
+      button.addEventListener("click", () => {
+        currentFolderId = folder.id;
+        renderLibrary();
+      });
+
+      els.folderBreadcrumb.append(separator, button);
+    });
+
+    els.upFolderBtn.disabled = !currentFolderId;
+  }
+
+  function goUpFolder() {
+    if (!currentFolderId) return;
+
+    const folder = folders.find(item => item.id === currentFolderId);
+    currentFolderId = folder?.parentId || null;
+    renderLibrary();
+  }
+
+  function openFolderModal() {
+    els.folderNameInput.value = "";
+    els.folderModal.classList.remove("hidden");
+    setTimeout(() => els.folderNameInput.focus(), 50);
+  }
+
+  function closeFolderModal() {
+    els.folderModal.classList.add("hidden");
+  }
+
+  async function createFolder() {
+    const name = els.folderNameInput.value.trim();
+
+    if (!name) {
+      alert("Enter a folder name.");
+      return;
+    }
+
+    await ProjectDB.saveFolder({
+      id: ProjectDB.makeId("folder"),
+      name,
+      parentId: currentFolderId,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    });
+
+    closeFolderModal();
+    await refreshLibrary();
   }
 
   function openProjectModal(suggestedName = "") {
     els.projectModalTitle.textContent =
       pendingProjectKind === "pdf"
-        ? "Import PDF Work File"
-        : "Create Blank Work File";
+        ? "Import PDF"
+        : "Create Blank Drawing";
 
     els.projectNameInput.value = suggestedName;
-    els.towerInput.value = "";
-    els.floorInput.value = "";
 
     els.blankSizeFields.classList.toggle(
       "hidden",
@@ -246,10 +356,7 @@ const App = (() => {
     );
 
     els.projectModal.classList.remove("hidden");
-
-    setTimeout(() => {
-      els.projectNameInput.focus();
-    }, 50);
+    setTimeout(() => els.projectNameInput.focus(), 50);
   }
 
   function closeProjectModal() {
@@ -274,21 +381,14 @@ const App = (() => {
     const now = Date.now();
 
     const project = {
-      id: crypto.randomUUID
-        ? crypto.randomUUID()
-        : "project_" + now + "_" + Math.random().toString(16).slice(2),
-
+      id: ProjectDB.makeId("project"),
       name,
-      tower: els.towerInput.value.trim(),
-      floor: els.floorInput.value.trim(),
+      folderId: currentFolderId,
       kind: pendingProjectKind,
       createdAt: now,
       updatedAt: now,
 
-      pdfData:
-        pendingProjectKind === "pdf"
-          ? pendingPdfData
-          : null,
+      pdfData: pendingProjectKind === "pdf" ? pendingPdfData : null,
 
       blankWidth:
         pendingProjectKind === "blank"
@@ -316,7 +416,7 @@ const App = (() => {
     await ProjectDB.saveProject(project);
 
     closeProjectModal();
-    await refreshProjects();
+    await refreshLibrary();
     await openProject(project.id);
   }
 
@@ -324,7 +424,7 @@ const App = (() => {
     const project = await ProjectDB.getProject(id);
 
     if (!project) {
-      alert("Project not found.");
+      alert("Work file not found.");
       return;
     }
 
@@ -335,71 +435,86 @@ const App = (() => {
       await Workspace.openProject(project);
     } catch (error) {
       console.error(error);
-      alert("Could not open this project.");
+      alert("Could not open this work file.");
       showLibrary();
     }
   }
 
-  async function renameSelectedProject() {
-    const project =
-      projects.find(item => item.id === currentMenuProjectId);
-
+  async function renameSelectedItem() {
     hideMenus();
+    if (!currentMenuItem) return;
 
-    if (!project) return;
+    if (currentMenuItem.type === "folder") {
+      const folder = folders.find(item => item.id === currentMenuItem.id);
+      if (!folder) return;
 
-    const newName = prompt(
-      "New project name:",
-      project.name
-    );
+      const name = prompt("New folder name:", folder.name);
+      if (!name?.trim()) return;
 
-    if (!newName?.trim()) return;
+      folder.name = name.trim();
+      await ProjectDB.saveFolder(folder);
+    } else {
+      const project = projects.find(item => item.id === currentMenuItem.id);
+      if (!project) return;
 
-    project.name = newName.trim();
-    await ProjectDB.saveProject(project);
-    await refreshProjects();
-  }
+      const name = prompt("New work file name:", project.name);
+      if (!name?.trim()) return;
 
-  async function duplicateSelectedProject() {
-    hideMenus();
-
-    if (!currentMenuProjectId) return;
-
-    await ProjectDB.duplicateProject(currentMenuProjectId);
-    await refreshProjects();
-  }
-
-  async function deleteSelectedProject() {
-    const project =
-      projects.find(item => item.id === currentMenuProjectId);
-
-    hideMenus();
-
-    if (!project) return;
-
-    if (!confirm(`Delete "${project.name}"? This cannot be undone.`)) {
-      return;
+      project.name = name.trim();
+      await ProjectDB.saveProject(project);
     }
 
-    await ProjectDB.deleteProject(project.id);
-    await refreshProjects();
+    await refreshLibrary();
+  }
+
+  async function duplicateSelectedItem() {
+    hideMenus();
+
+    if (!currentMenuItem || currentMenuItem.type !== "project") return;
+
+    await ProjectDB.duplicateProject(currentMenuItem.id);
+    await refreshLibrary();
+  }
+
+  async function deleteSelectedItem() {
+    hideMenus();
+    if (!currentMenuItem) return;
+
+    if (currentMenuItem.type === "folder") {
+      const folder = folders.find(item => item.id === currentMenuItem.id);
+      if (!folder) return;
+
+      if (!confirm(`Delete empty folder "${folder.name}"?`)) return;
+
+      try {
+        await ProjectDB.deleteFolder(folder.id);
+      } catch (error) {
+        alert("This folder is not empty. Delete or move its contents first.");
+        return;
+      }
+    } else {
+      const project = projects.find(item => item.id === currentMenuItem.id);
+      if (!project) return;
+
+      if (!confirm(`Delete "${project.name}"? This cannot be undone.`)) return;
+      await ProjectDB.deleteProject(project.id);
+    }
+
+    await refreshLibrary();
   }
 
   function showLibrary() {
     els.workspaceView.classList.add("hidden");
     els.homeView.classList.remove("hidden");
-    refreshProjects();
+    refreshLibrary();
   }
 
   function hideMenus() {
     els.newProjectMenu.classList.add("hidden");
-    els.projectContextMenu.classList.add("hidden");
+    els.libraryContextMenu.classList.add("hidden");
   }
 
-  function positionMenu(menu, x, y) {
-    const width = 200;
-    const height = 145;
-
+  function positionMenu(menu, x, y, width, height) {
     menu.style.left =
       Math.max(8, Math.min(x, window.innerWidth - width - 8)) + "px";
 
@@ -423,7 +538,8 @@ const App = (() => {
   return {
     init,
     start,
-    showLibrary
+    showLibrary,
+    refreshLibrary
   };
 })();
 
