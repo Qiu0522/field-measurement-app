@@ -204,3 +204,13 @@ FILES CHANGED IN 6.3: index.html, style.css, db.js, workspace.js, app.js, sw.js
 
 REMINDER: sw.js CACHE_VERSION was bumped to v6-3 so every device picks up
 this update on its next online launch.
+
+
+VERSION 6.3.1 — ORDERING START-CORNER FIX
+- Fixed each side starting its numbering from the MIDDLE of the side.
+- Now each side is numbered continuously from its corner:
+  clockwise starts at the top-left, counter-clockwise at the top-right.
+- Axis-aligned drawings now match the original behaviour exactly, plus the
+  rotation robustness added in 6.3.
+- Only workspace.js and sw.js changed since 6.3.
+- sw.js CACHE_VERSION bumped to v6-3-1.

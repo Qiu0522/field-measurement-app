@@ -1053,13 +1053,18 @@ const Workspace = (() => {
 
   /*
     A value that increases smoothly as you walk the perimeter in the chosen
-    direction, starting at the top. Because it is angle-based it has no
-    dependence on the drawing being axis-aligned.
+    direction. The walk starts at a CORNER, not the middle of a side, so each
+    side is numbered continuously from one corner to the next:
+      - clockwise starts at the top-left corner (135 degrees),
+      - counter-clockwise starts at the top-right corner (45 degrees).
+    The corners sit on the 45/135/225/315-degree diagonals, which are the
+    boundaries between the N/E/S/W sides. Because it is angle-based it does
+    not depend on the drawing being axis-aligned.
   */
   function traversalKey(angle, direction) {
     return direction === "clockwise"
-      ? (90 - angle + 360) % 360
-      : (angle - 90 + 360) % 360;
+      ? (135 - angle + 360) % 360
+      : (angle - 45 + 360) % 360;
   }
 
   function toggleOrderLabels() {
