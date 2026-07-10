@@ -1,17 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta name="viewport"
-      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="Field Measurement">
-  
-  <meta name="theme-color" content="#eeeeee">
-  
-  <link rel="manifest" href="manifest.json">
-    
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Field Measurement App</title>
@@ -298,8 +287,8 @@
     <button onclick="undo()" title="Undo">⟲</button>
     <button onclick="redo()" title="Redo">⟳</button>
 
-    <button onclick="previewCurrentData()">Preview Order</button>
-    <button onclick="clearPreview()">Cancel Preview</button>
+    <button onclick="orderCurrentData()">Order Current Data</button>
+    <button id="previewToggleBtn" onclick="toggleOrderLabels()">Show Order Labels</button>
 
     <button onclick="exportCSV()">Export CSV</button>
     <button onclick="exportPDF()">Export PDF</button>
@@ -423,10 +412,10 @@
     "use strict";
 
     const DEFAULT_DATA_TYPES = [
-      { id: "data1", name: "测量落差", color: "#0066ff", counter: 1, export: true },
-      { id: "data2", name: "Embed 距离", color: "#ff0000", counter: 1, export: true },
-      { id: "data3", name: "二次测量Embed距离", color: "#00aa00", counter: 1, export: true },
-      { id: "data4", name: "完成后立柱测量尺寸", color: "#8000ff", counter: 1, export: true }
+      { id: "data1", name: "测量落差", color: "#0066ff", counter: 1, export: true, ordered: false, direction: "clockwise" },
+      { id: "data2", name: "Embed 距离", color: "#ff0000", counter: 1, export: true, ordered: false, direction: "clockwise" },
+      { id: "data3", name: "二次测量Embed距离", color: "#00aa00", counter: 1, export: true, ordered: false, direction: "clockwise" },
+      { id: "data4", name: "完成后立柱测量尺寸", color: "#8000ff", counter: 1, export: true, ordered: false, direction: "clockwise" }
     ];
 
     let points = [];
@@ -452,7 +441,7 @@
     let commentBeforeStroke = "";
 
     let measurementCallback = null;
-    let currentPreviewDirection = "clockwise";
+    let showOrderLabels = false;
 
     let undoStack = [];
     let redoStack = [];
@@ -463,6 +452,7 @@
     const lockBtn = document.getElementById("lockBtn");
     const penBtn = document.getElementById("penBtn");
     const eraserBtn = document.getElementById("eraserBtn");
+    const previewToggleBtn = document.getElementById("previewToggleBtn");
     const statusText = document.getElementById("status");
 
     const drawingWrapper = document.getElementById("drawingWrapper");
@@ -488,6 +478,7 @@
 
     renderDataSelect();
     setPointMode("lock");
+    updatePreviewButton();
 
     measurementInput.addEventListener("input", function () {
       this.value = this.value.replace(/[^0-9./\-\s]/g, "");
@@ -598,7 +589,13 @@
       dataTypes.forEach(function (dataType) {
         const option = document.createElement("option");
         option.value = dataType.id;
-        option.textContent = dataType.name;
+
+        const pointCount = points.filter(point => point.dataId === dataType.id).length;
+        const statusMark = pointCount > 0
+          ? (dataType.ordered ? "✓ " : "○ ")
+          : "";
+
+        option.textContent = statusMark + dataType.name;
         dataSelect.appendChild(option);
       });
 
@@ -641,7 +638,9 @@
         name,
         color: dataTypeColorInput.value || "#000000",
         counter: 1,
-        export: true
+        export: true,
+        ordered: false,
+        direction: "clockwise"
       };
 
       dataTypes.push(newType);
@@ -748,13 +747,13 @@
         measurement,
         moved: false,
         moveDistance: 0,
-        manualSide: "",
-        previewSide: "",
-        previewSeq: ""
+        assignedSide: "",
+        assignedSeq: ""
       };
 
       points.push(point);
       dataType.counter += 1;
+      dataType.ordered = false;
 
       pushUndo({
         type: "add",
@@ -763,8 +762,10 @@
 
       createPointElement(point);
 
+      renderDataSelect(dataType.id);
+
       statusText.textContent =
-        dataType.name + ": " + measurement + " added.";
+        dataType.name + ": " + measurement + " added. Ordering needs review.";
     }
 
     function createPointElement(point) {
@@ -874,8 +875,8 @@
       const measurement = point.measurement || String(point.number);
 
       element.textContent =
-        point.previewSide && point.previewSeq
-          ? `${point.previewSide}${point.previewSeq} ${measurement}`
+        showOrderLabels && point.assignedSide && point.assignedSeq
+          ? `${point.assignedSide}${point.assignedSeq} ${measurement}`
           : measurement;
 
       element.style.left = point.x + "px";
@@ -922,6 +923,12 @@
         type: "delete",
         point
       });
+
+      const dataType = getDataType(point.dataId);
+      if (dataType?.ordered) {
+        recalculateDataTypeOrder(point.dataId);
+      }
+      renderDataSelect(point.dataId);
 
       statusText.textContent = "Point deleted.";
     }
@@ -993,10 +1000,10 @@
     function assignContextPointSide(side) {
       if (!contextPoint) return;
 
-      const oldSide = contextPoint.previewSide || contextPoint.manualSide || "";
-      contextPoint.manualSide = side;
-      contextPoint.previewSide = side;
+      const dataType = getDataType(contextPoint.dataId);
+      const oldSide = contextPoint.assignedSide || "";
 
+      contextPoint.assignedSide = side;
       closeAssignSideModal();
 
       pushUndo({
@@ -1007,16 +1014,18 @@
         dataId: contextPoint.dataId
       });
 
-      /*
-        Important behavior:
-        - Existing previewSide values stay frozen.
-        - Only this point changes side.
-        - Then every side is re-sorted and re-numbered.
-      */
-      recalculateFrozenPreviewForData(contextPoint.dataId);
+      if (dataType) {
+        dataType.ordered = true;
+        recalculateDataTypeOrder(dataType.id);
+      }
+
+      showOrderLabels = true;
+      updatePreviewButton();
+      refreshAllPoints();
+      renderDataSelect(contextPoint.dataId);
 
       statusText.textContent =
-        `Point changed to ${side}. Other side assignments stayed frozen.`;
+        `Point changed to ${side}. Only this data type was re-sequenced.`;
     }
 
     function movePointTo(point, newX, newY) {
@@ -1041,8 +1050,8 @@
 
       updatePointElement(point);
 
-      if (point.previewSide) {
-        recalculateFrozenPreviewForData(point.dataId);
+      if (point.assignedSide) {
+        recalculateDataTypeOrder(point.dataId);
       }
     }
 
@@ -1118,10 +1127,10 @@
       measurementCallback = null;
     }
 
-    function askDirection() {
+    function askDirection(defaultDirection = "clockwise") {
       const answer = prompt(
         "Type clockwise or counterclockwise:",
-        currentPreviewDirection
+        defaultDirection
       );
 
       if (!answer) return null;
@@ -1133,11 +1142,10 @@
         return null;
       }
 
-      currentPreviewDirection = clean;
       return clean;
     }
 
-    function previewCurrentData() {
+    function orderCurrentData() {
       const dataId = dataSelect.value;
       const dataType = getDataType(dataId);
 
@@ -1146,9 +1154,6 @@
         return;
       }
 
-      const direction = askDirection();
-      if (!direction) return;
-
       const dataPoints = points.filter(point => point.dataId === dataId);
 
       if (dataPoints.length === 0) {
@@ -1156,60 +1161,77 @@
         return;
       }
 
-      /*
-        First preview:
-        - Manual sides are respected.
-        - Existing frozen preview sides are respected.
-        - Only points with no frozen/manual side are guessed.
-      */
-      freezeMissingSidesForData(dataId);
+      const direction = askDirection(dataType.direction || "clockwise");
+      if (!direction) return;
 
-      recalculateFrozenPreviewForData(dataId);
+      dataType.direction = direction;
+
+      /*
+        Existing assigned sides stay fixed.
+        Only unassigned points are automatically classified.
+      */
+      assignMissingSidesForData(dataId);
+      dataType.ordered = true;
+      recalculateDataTypeOrder(dataId);
+
+      showOrderLabels = true;
+      updatePreviewButton();
+      refreshAllPoints();
+      renderDataSelect(dataId);
 
       statusText.textContent =
-        `${dataType.name}: ${direction} preview ready. ` +
+        `${dataType.name} ordered ${direction}. ` +
         "Long-press a wrong point and choose Assign Side.";
     }
 
-    function freezeMissingSidesForData(dataId) {
+    function assignMissingSidesForData(dataId) {
       const dataPoints = points.filter(point => point.dataId === dataId);
       if (dataPoints.length === 0) return;
 
       const bounds = getBounds(dataPoints);
 
       dataPoints.forEach(function (point) {
-        if (point.manualSide) {
-          point.previewSide = point.manualSide;
-        } else if (!point.previewSide) {
-          point.previewSide = guessSide(point, bounds);
+        if (!point.assignedSide) {
+          point.assignedSide = guessSide(point, bounds);
         }
       });
     }
 
-    function recalculateFrozenPreviewForData(dataId) {
+    function recalculateDataTypeOrder(dataId) {
+      const dataType = getDataType(dataId);
+      if (!dataType) return;
+
       const ordered = getOrderedPointsForData(
         dataId,
-        currentPreviewDirection,
-        true
+        dataType.direction || "clockwise"
       );
 
       ordered.forEach(function (item) {
-        item.point.previewSide = item.side;
-        item.point.previewSeq = item.seq;
-        updatePointElement(item.point);
+        item.point.assignedSide = item.side;
+        item.point.assignedSeq = item.seq;
       });
+
+      points
+        .filter(point => point.dataId === dataId)
+        .forEach(updatePointElement);
     }
 
-    function clearPreview() {
-      points.forEach(function (point) {
-        point.previewSide = "";
-        point.previewSeq = "";
-      });
-
+    function toggleOrderLabels() {
+      showOrderLabels = !showOrderLabels;
+      updatePreviewButton();
       refreshAllPoints();
 
-      statusText.textContent =
-        "Preview hidden. PDF export will show measurement text only.";
+      statusText.textContent = showOrderLabels
+        ? "Order labels shown for every ordered data type."
+        : "Order labels hidden. PDF export will show measurements only.";
+    }
+
+    function updatePreviewButton() {
+      previewToggleBtn.textContent = showOrderLabels
+        ? "Hide Order Labels"
+        : "Show Order Labels";
+
+      previewToggleBtn.classList.toggle("activeTool", showOrderLabels);
     }
 
     function getBounds(dataPoints) {
@@ -1236,11 +1258,9 @@
         .sort((a, b) => a[1] - b[1])[0][0];
     }
 
-    function getOrderedPointsForData(dataId, direction, useFrozenSides) {
+    function getOrderedPointsForData(dataId, direction) {
       const dataPoints = points.filter(point => point.dataId === dataId);
       if (dataPoints.length === 0) return [];
-
-      const bounds = getBounds(dataPoints);
 
       const groups = {
         N: [],
@@ -1250,16 +1270,7 @@
       };
 
       dataPoints.forEach(function (point) {
-        let side = "";
-
-        if (point.manualSide) {
-          side = point.manualSide;
-        } else if (useFrozenSides && point.previewSide) {
-          side = point.previewSide;
-        } else {
-          side = guessSide(point, bounds);
-        }
-
+        const side = point.assignedSide || "N";
         groups[side].push(point);
       });
 
@@ -1312,7 +1323,9 @@
         const dataType = getDataType(action.point.dataId);
         if (dataType) {
           dataType.counter = Math.max(1, dataType.counter - 1);
+          dataType.ordered = false;
         }
+        renderDataSelect(action.point.dataId);
       }
 
       if (action.type === "edit") {
@@ -1330,8 +1343,8 @@
         action.point.moved = action.point.moveDistance > 0;
         updatePointElement(action.point);
 
-        if (action.point.previewSide) {
-          recalculateFrozenPreviewForData(action.point.dataId);
+        if (action.point.assignedSide) {
+          recalculateDataTypeOrder(action.point.dataId);
         }
       }
 
@@ -1339,15 +1352,15 @@
         points.push(action.point);
         createPointElement(action.point);
 
-        if (action.point.previewSide) {
-          recalculateFrozenPreviewForData(action.point.dataId);
+        if (action.point.assignedSide) {
+          recalculateDataTypeOrder(action.point.dataId);
         }
       }
 
       if (action.type === "assignSide") {
-        action.point.manualSide = action.oldSide;
-        action.point.previewSide = action.oldSide;
-        recalculateFrozenPreviewForData(action.dataId);
+        action.point.assignedSide = action.oldSide;
+        recalculateDataTypeOrder(action.dataId);
+        renderDataSelect(action.dataId);
       }
 
       if (action.type === "comment") {
@@ -1368,7 +1381,9 @@
         const dataType = getDataType(action.point.dataId);
         if (dataType) {
           dataType.counter += 1;
+          dataType.ordered = false;
         }
+        renderDataSelect(action.point.dataId);
       }
 
       if (action.type === "edit") {
@@ -1383,8 +1398,8 @@
         action.point.moveDistance += action.distance;
         updatePointElement(action.point);
 
-        if (action.point.previewSide) {
-          recalculateFrozenPreviewForData(action.point.dataId);
+        if (action.point.assignedSide) {
+          recalculateDataTypeOrder(action.point.dataId);
         }
       }
 
@@ -1394,9 +1409,9 @@
       }
 
       if (action.type === "assignSide") {
-        action.point.manualSide = action.newSide;
-        action.point.previewSide = action.newSide;
-        recalculateFrozenPreviewForData(action.dataId);
+        action.point.assignedSide = action.newSide;
+        recalculateDataTypeOrder(action.dataId);
+        renderDataSelect(action.dataId);
       }
 
       if (action.type === "comment") {
@@ -1527,16 +1542,28 @@
     }
 
     function exportCSV() {
-      const direction = askDirection();
-      if (!direction) return;
+      const exportTypes = dataTypes.filter(dataType => {
+        return dataType.export &&
+          points.some(point => point.dataId === dataType.id);
+      });
+
+      const unorderedTypes = exportTypes.filter(dataType => !dataType.ordered);
+
+      if (unorderedTypes.length > 0) {
+        alert(
+          "Order these data types before exporting:\n\n" +
+          unorderedTypes.map(dataType => "• " + dataType.name).join("\n")
+        );
+        return;
+      }
 
       /*
-        If a data type has never been previewed, freeze its missing sides now.
-        Existing manual/frozen sides remain unchanged.
+        Export reads each data type's saved direction and final assigned
+        side/sequence. It does not reclassify points.
       */
-      dataTypes
-        .filter(dataType => dataType.export)
-        .forEach(dataType => freezeMissingSidesForData(dataType.id));
+      exportTypes.forEach(function (dataType) {
+        recalculateDataTypeOrder(dataType.id);
+      });
 
       const fileNameInput = prompt(
         "Enter CSV file name:",
@@ -1549,14 +1576,12 @@
         ? fileNameInput
         : fileNameInput + ".csv";
 
-      const exportTypes = dataTypes.filter(dataType => dataType.export);
-
       const grouped = {};
+
       exportTypes.forEach(function (dataType) {
         grouped[dataType.id] = getOrderedPointsForData(
           dataType.id,
-          direction,
-          true
+          dataType.direction || "clockwise"
         );
       });
 
@@ -1593,9 +1618,7 @@
           row.push(item.seq);
           row.push(point.measurement);
 
-          if (point.manualSide) {
-            row.push("Manual side assigned");
-          } else if (point.moveDistance > 80) {
+          if (point.moveDistance > 80) {
             row.push("Point moved a large distance; check order");
           } else if (point.moved) {
             row.push("Point moved");
@@ -1624,7 +1647,7 @@
       URL.revokeObjectURL(url);
 
       statusText.textContent =
-        "CSV exported. Use Cancel Preview before exporting a measurement-only PDF.";
+        "CSV exported. Hide Order Labels before exporting a measurement-only PDF.";
     }
 
     async function exportPDF() {
@@ -1698,7 +1721,7 @@
       commentImageData = "";
       commentBeforeStroke = "";
 
-      currentPreviewDirection = "clockwise";
+      showOrderLabels = false;
 
       undoStack = [];
       redoStack = [];
@@ -1714,6 +1737,7 @@
       drawingArea.style.transform = "scale(1)";
       renderDataSelect();
       updateToolButtons();
+      updatePreviewButton();
       hideContextMenu();
     }
   </script>
