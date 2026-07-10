@@ -88,7 +88,6 @@ const Workspace = (() => {
     els.pointAssignSideAction = document.getElementById("pointAssignSideAction");
     els.pointMoveUpAction = document.getElementById("pointMoveUpAction");
     els.pointMoveDownAction = document.getElementById("pointMoveDownAction");
-    els.pointReorderSideAction = document.getElementById("pointReorderSideAction");
     els.pointDeleteAction = document.getElementById("pointDeleteAction");
 
     els.reorderBar = document.getElementById("reorderBar");
@@ -269,11 +268,6 @@ const Workspace = (() => {
     els.pointMoveDownAction.addEventListener("click", () => {
       hidePointContextMenu();
       if (contextPoint) movePointInSequence(contextPoint, 1);
-    });
-
-    els.pointReorderSideAction.addEventListener("click", () => {
-      hidePointContextMenu();
-      if (contextPoint) startTapReorder(contextPoint);
     });
 
     els.reorderCancelBtn.addEventListener("click", cancelTapReorder);
@@ -643,31 +637,12 @@ const Workspace = (() => {
     points.push(point);
     dataType.counter += 1;
 
-    if (dataType.manual) {
-      // Keep the manual order: guess this point's side and append it last.
-      const sidePoints = points.filter(p => p.dataId === dataType.id);
-      const bounds = getBounds(sidePoints);
-      point.assignedSide = guessSide(point, bounds);
-
-      const sideMax = Math.max(
-        0,
-        ...sidePoints
-          .filter(p => p.assignedSide === point.assignedSide && p !== point)
-          .map(p => p.manualSeq || 0)
-      );
-
-      point.manualSeq = sideMax + 1;
-    } else {
-      dataType.ordered = false;
-    }
+    dataType.manual = false;
+    dataType.ordered = false;
 
     pushUndo({ type: "add", point });
     createPointElement(point);
     renderDataSelect(dataType.id);
-
-    if (dataType.manual) {
-      recalculateDataTypeOrder(dataType.id);
-    }
 
     setStatus(`${dataType.name}: ${measurement} added.`);
     scheduleAutoSave();
@@ -881,6 +856,9 @@ const Workspace = (() => {
     point.moved = true;
     point.moveDistance += distance;
 
+    const dataType = getDataType(point.dataId);
+    if (dataType) dataType.manual = false;
+
     pushUndo({
       type: "move",
       point,
@@ -1022,14 +1000,9 @@ const Workspace = (() => {
   }
 
   /*
-    Ordering. By default this is the original bounding-box method: points are
-    grouped into N/E/S/W by which edge of the bounding box they are nearest to,
-    then each side is numbered along that edge.
-
-    If the data type is in MANUAL mode (the user has adjusted the order by hand
-    with Move Up/Down or Reorder-by-Tapping), the stored manual order is used
-    instead of geometry. Pressing "Order Current Data" again clears manual mode
-    and returns to automatic ordering.
+    Use v6.2 geometric ordering by default. Move Up/Down temporarily stores a
+    manual order; adding/moving a point, assigning a side, or ordering again
+    returns safely to the v6.2 geometric result.
   */
   function getOrderedPoints(dataId, direction) {
     const dataType = getDataType(dataId);
