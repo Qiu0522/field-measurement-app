@@ -67,8 +67,8 @@ const Workspace = (() => {
     els.penBtn = document.getElementById("penBtn");
     els.highlighterBtn = document.getElementById("highlighterBtn");
     els.eraserBtn = document.getElementById("eraserBtn");
-    els.brushColorSelect = document.getElementById("brushColorSelect");
-    els.brushSizeSelect = document.getElementById("brushSizeSelect");
+    els.colorSwatches = Array.from(document.querySelectorAll("[data-brush-color]"));
+    els.sizeChoices = Array.from(document.querySelectorAll("[data-brush-size]"));
     els.undoBtn = document.getElementById("undoBtn");
     els.redoBtn = document.getElementById("redoBtn");
     els.zoomOutBtn = document.getElementById("zoomOutBtn");
@@ -178,13 +178,19 @@ const Workspace = (() => {
     els.penBtn.addEventListener("click", () => toggleCommentTool("pen"));
     els.highlighterBtn.addEventListener("click", () => toggleCommentTool("highlighter"));
     els.eraserBtn.addEventListener("click", () => toggleCommentTool("eraser"));
-    els.brushColorSelect.addEventListener("change", () => {
-      brushColor = els.brushColorSelect.value;
-      scheduleAutoSave();
+    els.colorSwatches.forEach(button => {
+      button.addEventListener("click", () => {
+        brushColor = button.dataset.brushColor;
+        updateBrushControls();
+        scheduleAutoSave();
+      });
     });
-    els.brushSizeSelect.addEventListener("change", () => {
-      brushWidth = Number(els.brushSizeSelect.value) || 5;
-      scheduleAutoSave();
+    els.sizeChoices.forEach(button => {
+      button.addEventListener("click", () => {
+        brushWidth = Number(button.dataset.brushSize) || 5;
+        updateBrushControls();
+        scheduleAutoSave();
+      });
     });
 
     els.undoBtn.addEventListener("click", undo);
@@ -247,6 +253,8 @@ const Workspace = (() => {
     els.zoomOutBtn.addEventListener("click", () => {
       changeZoom(-0.2);
     });
+
+    els.zoomDisplay.addEventListener("click", () => resetZoom());
 
     els.pointEditAction.addEventListener("click", () => {
       hidePointContextMenu();
@@ -381,14 +389,14 @@ const Workspace = (() => {
     commentTool = "none";
     brushColor = state.brushColor || "#ff0000";
     brushWidth = Number(state.brushWidth || 5);
-    els.brushColorSelect.value = brushColor;
-    els.brushSizeSelect.value = String(brushWidth);
+    updateBrushControls();
     showOrderLabels = Boolean(state.showOrderLabels);
     zoomLevel = Number(state.zoomLevel || 1);
 
     commentImageData = state.commentImageData || "";
     undoStack = [];
     redoStack = [];
+    updateUndoRedoButtons();
 
     els.workspaceProjectName.textContent = project.name;
     renderDataSelect(state.selectedDataId);
@@ -609,6 +617,18 @@ const Workspace = (() => {
     if (commentTool === "highlighter") els.highlighterBtn.classList.add("activeTool");
     if (commentTool === "eraser") els.eraserBtn.classList.add("activeTool");
     els.commentCanvas.classList.toggle("inkActive", commentTool !== "none");
+    els.drawingArea.classList.toggle("inkMode", commentTool !== "none");
+    els.drawingWrapper.classList.toggle("inkMode", commentTool !== "none");
+  }
+
+  function updateBrushControls() {
+    if (!els.colorSwatches || !els.sizeChoices) return;
+    els.colorSwatches.forEach(button => {
+      button.classList.toggle("selected", button.dataset.brushColor === brushColor);
+    });
+    els.sizeChoices.forEach(button => {
+      button.classList.toggle("selected", Number(button.dataset.brushSize) === brushWidth);
+    });
   }
 
   function updateLabelsButton() {
@@ -904,6 +924,16 @@ const Workspace = (() => {
 
   function showPointContextMenu(x, y, point) {
     contextPoint = point;
+
+    const dataType = getDataType(point.dataId);
+    const sideItems = dataType?.ordered
+      ? getOrderedPoints(point.dataId, dataType.direction || "clockwise")
+          .filter(item => item.side === point.assignedSide)
+      : [];
+    const sideIndex = sideItems.findIndex(item => item.point === point);
+    els.pointMoveUpAction.disabled = sideIndex <= 0;
+    els.pointMoveDownAction.disabled =
+      sideIndex < 0 || sideIndex >= sideItems.length - 1;
 
     const left = Math.min(x, window.innerWidth - 195);
     const top = Math.min(y, window.innerHeight - 210);
@@ -1537,6 +1567,12 @@ const Workspace = (() => {
   }
 
   function bindCommentCanvas() {
+    ["contextmenu", "selectstart", "dragstart"].forEach(type => {
+      els.drawingArea.addEventListener(type, event => {
+        if (commentTool !== "none") event.preventDefault();
+      });
+    });
+
     els.commentCanvas.addEventListener("pointerdown", event => {
       if (commentTool === "none") return;
 
@@ -1608,7 +1644,7 @@ const Workspace = (() => {
           context.lineWidth = 36;
         } else if (commentTool === "highlighter") {
           context.globalCompositeOperation = "source-over";
-          context.globalAlpha = 0.28;
+          context.globalAlpha = 0.14;
           context.strokeStyle = brushColor;
           context.lineWidth = brushWidth * 4;
         } else {
@@ -1699,11 +1735,24 @@ const Workspace = (() => {
   function pushUndo(action) {
     undoStack.push(action);
     redoStack = [];
+    updateUndoRedoButtons();
+  }
+
+  function updateUndoRedoButtons() {
+    if (!els.undoBtn || !els.redoBtn) return;
+
+    els.undoBtn.disabled = undoStack.length === 0;
+    els.redoBtn.disabled = redoStack.length === 0;
+    els.undoBtn.title = undoStack.length ? "Undo" : "Nothing to undo";
+    els.redoBtn.title = redoStack.length ? "Redo" : "Nothing to redo";
   }
 
   function undo() {
     const action = undoStack.pop();
-    if (!action) return;
+    if (!action) {
+      updateUndoRedoButtons();
+      return;
+    }
 
     if (action.type === "add") {
       points = points.filter(point => point.uid !== action.point.uid);
@@ -1769,12 +1818,16 @@ const Workspace = (() => {
     }
 
     redoStack.push(action);
+    updateUndoRedoButtons();
     scheduleAutoSave();
   }
 
   function redo() {
     const action = redoStack.pop();
-    if (!action) return;
+    if (!action) {
+      updateUndoRedoButtons();
+      return;
+    }
 
     if (action.type === "add") {
       points.push(action.point);
@@ -1833,6 +1886,7 @@ const Workspace = (() => {
     }
 
     undoStack.push(action);
+    updateUndoRedoButtons();
     scheduleAutoSave();
   }
 
@@ -2153,6 +2207,11 @@ const Workspace = (() => {
     });
 
     scheduleAutoSave();
+  }
+
+  function resetZoom() {
+    if (zoomLevel === 1) return;
+    changeZoom(1 - zoomLevel);
   }
 
   function applyZoom() {

@@ -200,28 +200,43 @@ button {
 /* ------------------------- Workspace ------------------------ */
 
 #workspaceView {
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 
 #toolbar {
   flex: 0 0 auto;
   touch-action: manipulation;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 5px;
-  padding: 7px;
   border-bottom: 1px solid #bfc2c7;
   background: #eeeeef;
   z-index: 100;
 }
 
+.toolbarRow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 54px;
+  padding: 5px 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.toolbarRow::-webkit-scrollbar { display: none; }
+.primaryTools { border-bottom: 1px solid #d4d5d8; }
+
 .toolbarButton {
-  min-height: 35px;
-  padding: 5px 9px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 7px 11px;
   border: 1px solid #96999e;
-  border-radius: 5px;
+  border-radius: 8px;
   background: #f7f7f7;
+  white-space: nowrap;
 }
 
 .toolbarButton.activeTool {
@@ -231,10 +246,22 @@ button {
   font-weight: bold;
 }
 
-.iconButton {
-  min-width: 38px;
-  padding: 5px;
+.toolbarButton:disabled {
+  color: #9a9da2;
+  border-color: #c8c9cc;
+  background: #e4e5e7;
+  opacity: 0.58;
+  cursor: not-allowed;
+  box-shadow: none;
 }
+
+.iconButton {
+  min-width: 44px;
+  padding: 7px;
+  font-size: 21px;
+}
+
+.toolButton { display: inline-flex; align-items: center; gap: 6px; }
 
 .workspaceTitle {
   max-width: 210px;
@@ -253,13 +280,94 @@ button {
 }
 
 .compactLabel select {
-  min-height: 35px;
+  min-height: 44px;
   max-width: 240px;
+  border-radius: 8px;
 }
 
-.brushControl select {
-  min-width: 78px;
-  max-width: 96px;
+.brushPalette,
+.sizePalette,
+.zoomControl {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid #c3c5c9;
+  border-radius: 10px;
+  background: #f8f8f9;
+}
+
+.colorSwatch,
+.sizeChoice {
+  position: relative;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+}
+
+.colorSwatch::before {
+  position: absolute;
+  inset: 7px;
+  border: 1px solid rgba(0,0,0,.25);
+  border-radius: 50%;
+  background: var(--swatch);
+  content: "";
+}
+
+.colorSwatch.selected,
+.sizeChoice.selected {
+  border-color: var(--primary);
+  background: #eaf1ff;
+}
+
+.sizeLine {
+  display: block;
+  width: 24px;
+  margin: auto;
+  border-radius: 99px;
+  background: #202124;
+}
+.sizeLine.thin { height: 2px; }
+.sizeLine.medium { height: 5px; }
+.sizeLine.thick { height: 8px; }
+
+.zoomDisplay {
+  min-width: 62px;
+  min-height: 38px;
+  border: 0;
+  background: transparent;
+  font-weight: bold;
+}
+
+.exportMenu { position: relative; }
+.exportMenu summary { display: flex; align-items: center; list-style: none; }
+.exportMenu summary::-webkit-details-marker { display: none; }
+.exportMenuPanel {
+  position: fixed;
+  z-index: 500;
+  display: grid;
+  gap: 6px;
+  right: 10px;
+  margin-top: 5px;
+  padding: 8px;
+  border: 1px solid #bbb;
+  border-radius: 10px;
+  background: white;
+  box-shadow: 0 8px 22px rgba(0,0,0,.18);
+}
+.exportMenuPanel button { min-width: 145px; min-height: 44px; }
+
+#workspaceStatusBar {
+  flex: 0 0 36px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 10px calc(4px + env(safe-area-inset-bottom));
+  border-top: 1px solid #c6c8cc;
+  background: #f6f7f8;
 }
 
 .saveIndicator {
@@ -284,8 +392,10 @@ button {
 }
 
 #drawingWrapper {
+  flex: 1 1 auto;
+  min-height: 0;
   width: 100vw;
-  height: calc(100vh - 88px);
+  height: auto;
   overflow: auto;
   background: #dedfe2;
   touch-action: pan-x pan-y;
@@ -300,6 +410,9 @@ button {
   border: 1px solid #b8bbc0;
   background: white;
   transform-origin: top left;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 
 #drawingImage,
@@ -322,6 +435,20 @@ button {
   /* Pencil events stay with the canvas; finger panning is handled in JS. */
   touch-action: none;
   cursor: crosshair;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+#drawingArea.inkMode .point {
+  pointer-events: none !important;
+}
+
+#drawingWrapper.inkMode,
+#drawingWrapper.inkMode #drawingArea {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
 }
 
 .point {
@@ -606,12 +733,11 @@ button {
   }
 
   #toolbar {
-    max-height: 122px;
-    overflow-y: auto;
+    max-height: none;
   }
 
   #drawingWrapper {
-    height: calc(100vh - 122px);
+    height: auto;
   }
 
   .point {
