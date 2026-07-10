@@ -87,7 +87,11 @@
       <button id="exportCsvBtn" class="toolbarButton" type="button">Export CSV</button>
       <button id="exportPdfBtn" class="toolbarButton" type="button">Export PDF</button>
 
-      <span id="saveIndicator" class="saveIndicator">Saved</span>
+      <button id="manualSaveBtn" class="toolbarButton saveButton" type="button">
+        💾 Save
+      </button>
+
+      <span id="saveIndicator" class="saveIndicator">✓ Saved</span>
       <span id="status" class="statusText">Ready.</span>
     </div>
 
@@ -261,6 +265,7 @@
 
   <!-- Script order matters -->
   <script src="db.js"></script>
+  <script src="save.js"></script>
   <script src="workspace.js"></script>
   <script src="app.js"></script>
 </body>

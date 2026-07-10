@@ -40,7 +40,6 @@ const Workspace = (() => {
   let undoStack = [];
   let redoStack = [];
 
-  let saveTimer = null;
   let isDirty = false;
 
   const els = {};
@@ -64,6 +63,7 @@ const Workspace = (() => {
     els.labelsBtn = document.getElementById("labelsBtn");
     els.exportCsvBtn = document.getElementById("exportCsvBtn");
     els.exportPdfBtn = document.getElementById("exportPdfBtn");
+    els.manualSaveBtn = document.getElementById("manualSaveBtn");
 
     els.saveIndicator = document.getElementById("saveIndicator");
     els.status = document.getElementById("status");
@@ -97,19 +97,44 @@ const Workspace = (() => {
     bindEvents();
     renderDataSelect();
     updateToolButtons();
+
+    SaveController.init({
+      statusElement: els.saveIndicator,
+      intervalMs: 3 * 60 * 1000,
+      saveFunction: async () => {
+        await persistProjectState();
+      }
+    });
   }
 
   function bindEvents() {
     els.backHomeBtn.addEventListener("click", async () => {
       els.backHomeBtn.disabled = true;
-      setStatus("Saving…");
 
       try {
-        await closeProject();
+        if (SaveController.isDirty()) {
+          setStatus("Saving before returning to Library…");
+          await SaveController.save("library", true);
+        }
+
+        await closeProject(false);
         App.showLibrary();
       } catch (error) {
         console.error(error);
-        alert("Could not save this work file.");
+
+        const details = ProjectDB.explainError
+          ? ProjectDB.explainError(error)
+          : String(error);
+
+        const choice = confirm(
+          "Save failed.\n\n" + details +
+          "\n\nReturn to Library without saving recent changes?"
+        );
+
+        if (choice) {
+          await closeProject(false);
+          App.showLibrary();
+        }
       } finally {
         els.backHomeBtn.disabled = false;
       }
@@ -130,6 +155,34 @@ const Workspace = (() => {
 
     els.exportCsvBtn.addEventListener("click", exportCSV);
     els.exportPdfBtn.addEventListener("click", exportPDF);
+
+    els.manualSaveBtn.addEventListener("click", async () => {
+      els.manualSaveBtn.disabled = true;
+
+      try {
+        await SaveController.save("manual", true);
+        setStatus("Saved manually.");
+      } catch (error) {
+        console.error(error);
+
+        const details = ProjectDB.explainError
+          ? ProjectDB.explainError(error)
+          : String(error);
+
+        alert("Save failed.\n\n" + details);
+      } finally {
+        els.manualSaveBtn.disabled = false;
+      }
+    });
+
+    document.addEventListener("keydown", event => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "s") {
+        return;
+      }
+
+      event.preventDefault();
+      SaveController.save("keyboard", true).catch(console.error);
+    });
 
     els.drawingArea.addEventListener("click", handleDrawingClick);
     /*
@@ -291,21 +344,16 @@ const Workspace = (() => {
 
     setPointMode(pointMode);
     isDirty = false;
-    setStatus("Project loaded. Changes save automatically.");
-    showSaved();
+    SaveController.markSaved();
+    setStatus("Project loaded. Press Save anytime; safety save runs every 3 minutes.");
   }
 
-  async function closeProject() {
+  async function closeProject(saveBeforeClosing = true) {
     if (!project) return;
 
-    clearTimeout(saveTimer);
-
-    /*
-      Returning to Library must always preserve zoom and scroll position.
-      The save is now small because the PDF asset is stored separately and
-      the comment canvas is not re-encoded on every save.
-    */
-    await saveNow(true);
+    if (saveBeforeClosing && SaveController.isDirty()) {
+      await SaveController.save("close", true);
+    }
 
     project = null;
     points = [];
@@ -319,6 +367,8 @@ const Workspace = (() => {
       els.commentCanvas.width,
       els.commentCanvas.height
     );
+
+    SaveController.markSaved();
   }
 
   async function renderStoredPdf(pdfData) {
@@ -1373,32 +1423,23 @@ const Workspace = (() => {
   }
 
   function scheduleAutoSave() {
+    /*
+      Version 5:
+      Editing no longer writes to IndexedDB immediately.
+      It only marks the project as Unsaved.
+      Save occurs by:
+      1. pressing Save,
+      2. the 3-minute safety timer,
+      3. returning to Library.
+    */
     if (!project) return;
 
     isDirty = true;
-    els.saveIndicator.textContent = "Unsaved";
-    els.saveIndicator.classList.add("saving");
-
-    clearTimeout(saveTimer);
-
-    /*
-      Batch rapid field edits into one IndexedDB write.
-      This avoids writing after every tap.
-    */
-    saveTimer = setTimeout(() => {
-      saveNow(false).catch(error => {
-        console.error("Autosave failed:", error);
-        els.saveIndicator.textContent = "Save failed";
-      });
-    }, 1600);
+    SaveController.markUnsaved();
   }
 
-  async function saveNow(force = false) {
+  async function persistProjectState() {
     if (!project) return;
-    if (!force && !isDirty) return;
-
-    clearTimeout(saveTimer);
-    showSaving();
 
     project.state = {
       points,
@@ -1407,11 +1448,6 @@ const Workspace = (() => {
       showOrderLabels,
       zoomLevel,
       selectedDataId: els.dataSelect.value,
-
-      /*
-        commentImageData is refreshed only when a pen/eraser stroke ends.
-        Avoiding canvas.toDataURL() here removes the largest autosave delay.
-      */
       commentImageData,
       scrollLeft: els.drawingWrapper.scrollLeft,
       scrollTop: els.drawingWrapper.scrollTop
@@ -1420,17 +1456,18 @@ const Workspace = (() => {
     await ProjectDB.saveProject(project);
 
     isDirty = false;
-    showSaved();
+  }
+
+  async function saveNow(force = false) {
+    return SaveController.save("workspace", force);
   }
 
   function showSaving() {
-    els.saveIndicator.textContent = "Saving…";
-    els.saveIndicator.classList.add("saving");
+    SaveController.markSaving();
   }
 
   function showSaved() {
-    els.saveIndicator.textContent = "Saved";
-    els.saveIndicator.classList.remove("saving");
+    SaveController.markSaved();
   }
 
   function applyZoom() {

@@ -723,3 +723,54 @@ button {
     flex: 1;
   }
 }
+
+
+/* ---------------------- Version 5 Save System ---------------------- */
+
+.saveButton {
+  border-color: #1769aa !important;
+  background: #eaf4ff !important;
+  color: #0f4f82 !important;
+  font-weight: 700;
+}
+
+.saveButton:active {
+  background: #cfe8ff !important;
+}
+
+.saveIndicator {
+  min-width: 92px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  text-align: center;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.saveIndicator[data-save-state="saved"] {
+  background: #e6f7eb;
+  color: #176d35;
+}
+
+.saveIndicator[data-save-state="unsaved"] {
+  background: #fff1d6;
+  color: #8a5700;
+}
+
+.saveIndicator[data-save-state="saving"] {
+  background: #e7efff;
+  color: #24568f;
+}
+
+.saveIndicator[data-save-state="failed"] {
+  background: #ffe5e5;
+  color: #a31818;
+}
+
+.saveIndicator.unsaved::before {
+  content: "";
+}
+
+.saveIndicator.saveFailed {
+  border: 1px solid #d76666;
+}

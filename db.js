@@ -9,6 +9,7 @@ const ProjectDB = (() => {
   const ASSETS = "assets";
 
   let dbPromise = null;
+  let writeQueue = Promise.resolve();
 
   function open() {
     if (dbPromise) return dbPromise;
@@ -45,83 +46,69 @@ const ProjectDB = (() => {
         if (!db.objectStoreNames.contains(ASSETS)) {
           db.createObjectStore(ASSETS, { keyPath: "projectId" });
         }
-
-        /*
-          Existing Version 4 records may contain a large pdfData ArrayBuffer.
-          Move it to the asset store once, so ordinary autosaves only write
-          the much smaller project state.
-        */
-        if (event.oldVersion < 2 && projectStore) {
-          const assetStore = transaction.objectStore(ASSETS);
-          const cursorRequest = projectStore.openCursor();
-
-          cursorRequest.onsuccess = cursorEvent => {
-            const cursor = cursorEvent.target.result;
-            if (!cursor) return;
-
-            const project = cursor.value;
-
-            if (project.pdfData) {
-              assetStore.put({
-                projectId: project.id,
-                pdfData: project.pdfData
-              });
-
-              delete project.pdfData;
-              project.folderId = project.folderId || null;
-              cursor.update(project);
-            } else if (project.folderId === undefined) {
-              project.folderId = null;
-              cursor.update(project);
-            }
-
-            cursor.continue();
-          };
-        }
       };
 
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const db = request.result;
+
+        db.onversionchange = () => {
+          db.close();
+          dbPromise = null;
+        };
+
+        resolve(db);
+      };
+
+      request.onerror = () => {
+        dbPromise = null;
+        reject(request.error);
+      };
+
+      request.onblocked = () => {
+        console.warn("IndexedDB upgrade is blocked by another open tab.");
+      };
     });
 
     return dbPromise;
   }
 
-  async function requestResult(storeName, mode, operation) {
+  async function runRequest(storeName, mode, operation) {
     const db = await open();
 
     return new Promise((resolve, reject) => {
-      const tx = db.transaction(storeName, mode);
-      const store = tx.objectStore(storeName);
-      const request = operation(store);
-
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-      tx.onabort = () => reject(tx.error);
-    });
-  }
-
-  async function transactionComplete(storeNames, mode, callback) {
-    const db = await open();
-
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(storeNames, mode);
+      let tx;
 
       try {
-        callback(tx);
+        tx = db.transaction(storeName, mode);
       } catch (error) {
         reject(error);
         return;
       }
 
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-      tx.onabort = () => reject(tx.error);
+      const store = tx.objectStore(storeName);
+      let request;
+
+      try {
+        request = operation(store);
+      } catch (error) {
+        reject(error);
+        return;
+      }
+
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+      tx.onabort = () => reject(tx.error || new Error("Database transaction aborted."));
     });
   }
 
+  function enqueueWrite(task) {
+    const next = writeQueue.then(task, task);
+    writeQueue = next.catch(() => {});
+    return next;
+  }
+
   async function getAllProjects() {
-    const projects = await requestResult(
+    const projects = await runRequest(
       PROJECTS,
       "readonly",
       store => store.getAll()
@@ -131,7 +118,7 @@ const ProjectDB = (() => {
   }
 
   async function getProject(id) {
-    const project = await requestResult(
+    const project = await runRequest(
       PROJECTS,
       "readonly",
       store => store.get(id)
@@ -139,52 +126,99 @@ const ProjectDB = (() => {
 
     if (!project) return null;
 
-    const asset = await requestResult(
-      ASSETS,
-      "readonly",
-      store => store.get(id)
-    );
+    let asset = null;
 
+    try {
+      asset = await runRequest(
+        ASSETS,
+        "readonly",
+        store => store.get(id)
+      );
+    } catch (error) {
+      console.warn("Could not read separate PDF asset:", error);
+    }
+
+    /*
+      Compatibility with older Version 4 records:
+      - old records may still contain pdfData directly
+      - newer records use the assets store
+    */
     if (asset?.pdfData) {
       project.pdfData = asset.pdfData;
+      project._assetSaved = true;
+    } else if (project.pdfData) {
+      project._assetSaved = false;
     }
 
     return project;
   }
 
   async function saveProject(project) {
-    const record = {
-      ...project,
-      folderId: project.folderId || null,
-      updatedAt: Date.now()
-    };
+    return enqueueWrite(async () => {
+      const now = Date.now();
 
-    const pdfData = record.pdfData;
-    delete record.pdfData;
+      const record = {
+        ...project,
+        folderId: project.folderId || null,
+        updatedAt: now
+      };
 
-    const stores = pdfData
-      ? [PROJECTS, ASSETS]
-      : [PROJECTS];
+      const pdfData = record.pdfData;
 
-    await transactionComplete(stores, "readwrite", tx => {
-      tx.objectStore(PROJECTS).put(record);
+      /*
+        Never place the large PDF ArrayBuffer in the ordinary project record.
+        Also remove private runtime flags.
+      */
+      delete record.pdfData;
+      delete record._assetSaved;
 
-      if (pdfData) {
-        tx.objectStore(ASSETS).put({
-          projectId: record.id,
-          pdfData
-        });
+      await runRequest(
+        PROJECTS,
+        "readwrite",
+        store => store.put(record)
+      );
+
+      /*
+        Save the PDF only once:
+        - for a newly imported PDF
+        - for an old record being migrated
+        Ordinary point/autosave updates skip this large write.
+      */
+      if (pdfData && !project._assetSaved) {
+        await runRequest(
+          ASSETS,
+          "readwrite",
+          store => store.put({
+            projectId: record.id,
+            pdfData
+          })
+        );
+
+        project._assetSaved = true;
       }
-    });
 
-    project.updatedAt = record.updatedAt;
-    return project;
+      project.updatedAt = now;
+      return project;
+    });
   }
 
   async function deleteProject(id) {
-    await transactionComplete([PROJECTS, ASSETS], "readwrite", tx => {
-      tx.objectStore(PROJECTS).delete(id);
-      tx.objectStore(ASSETS).delete(id);
+    return enqueueWrite(async () => {
+      await runRequest(
+        PROJECTS,
+        "readwrite",
+        store => store.delete(id)
+      );
+
+      try {
+        await runRequest(
+          ASSETS,
+          "readwrite",
+          store => store.delete(id)
+        );
+      } catch (error) {
+        console.warn("Could not delete PDF asset:", error);
+      }
     });
   }
 
@@ -198,12 +232,17 @@ const ProjectDB = (() => {
     copy.createdAt = Date.now();
     copy.updatedAt = Date.now();
 
+    /*
+      The duplicate has a new ID, so its PDF must be written as a new asset.
+    */
+    copy._assetSaved = false;
+
     await saveProject(copy);
     return copy;
   }
 
   async function getAllFolders() {
-    const folders = await requestResult(
+    const folders = await runRequest(
       FOLDERS,
       "readonly",
       store => store.getAll()
@@ -215,19 +254,22 @@ const ProjectDB = (() => {
   }
 
   async function saveFolder(folder) {
-    const record = {
-      ...folder,
-      parentId: folder.parentId || null,
-      updatedAt: Date.now()
-    };
+    return enqueueWrite(async () => {
+      const record = {
+        ...folder,
+        parentId: folder.parentId || null,
+        updatedAt: Date.now()
+      };
 
-    await requestResult(
-      FOLDERS,
-      "readwrite",
-      store => store.put(record)
-    );
+      await runRequest(
+        FOLDERS,
+        "readwrite",
+        store => store.put(record)
+      );
 
-    return record;
+      folder.updatedAt = record.updatedAt;
+      return folder;
+    });
   }
 
   async function deleteFolder(folderId) {
@@ -241,10 +283,12 @@ const ProjectDB = (() => {
       throw new Error("Folder is not empty.");
     }
 
-    await requestResult(
-      FOLDERS,
-      "readwrite",
-      store => store.delete(folderId)
+    return enqueueWrite(() =>
+      runRequest(
+        FOLDERS,
+        "readwrite",
+        store => store.delete(folderId)
+      )
     );
   }
 
@@ -271,6 +315,24 @@ const ProjectDB = (() => {
       : prefix + "_" + Date.now() + "_" + Math.random().toString(16).slice(2);
   }
 
+  function explainError(error) {
+    if (!error) return "Unknown database error.";
+
+    if (error.name === "QuotaExceededError") {
+      return "This iPad is low on website storage. Delete unused work files or free device storage.";
+    }
+
+    if (error.name === "InvalidStateError") {
+      return "The local database connection was interrupted. Close other tabs of this app and reload.";
+    }
+
+    if (error.name === "DataCloneError") {
+      return "Some project data could not be stored. Reload the app and try again.";
+    }
+
+    return `${error.name || "Error"}: ${error.message || String(error)}`;
+  }
+
   return {
     open,
     getAllProjects,
@@ -281,6 +343,7 @@ const ProjectDB = (() => {
     getAllFolders,
     saveFolder,
     deleteFolder,
-    makeId
+    makeId,
+    explainError
   };
 })();

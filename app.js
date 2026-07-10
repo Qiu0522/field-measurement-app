@@ -389,6 +389,7 @@ const App = (() => {
       updatedAt: now,
 
       pdfData: pendingProjectKind === "pdf" ? pendingPdfData : null,
+      _assetSaved: pendingProjectKind !== "pdf",
 
       blankWidth:
         pendingProjectKind === "blank"
