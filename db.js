@@ -54,6 +54,13 @@ const ProjectDB = (() => {
         db.onversionchange = () => {
           db.close();
           dbPromise = null;
+
+          // Let the UI warn the user that another tab took over the database.
+          try {
+            window.dispatchEvent(new CustomEvent("fielddb:conflict"));
+          } catch (error) {
+            /* CustomEvent unavailable: ignore */
+          }
         };
 
         resolve(db);

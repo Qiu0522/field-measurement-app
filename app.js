@@ -34,6 +34,10 @@ const App = (() => {
     els.restoreReplaceBtn = document.getElementById("restoreReplaceBtn");
     els.cancelRestoreBtn = document.getElementById("cancelRestoreBtn");
 
+    els.appBanner = document.getElementById("appBanner");
+    els.appBannerText = document.getElementById("appBannerText");
+    els.appBannerClose = document.getElementById("appBannerClose");
+
     els.upFolderBtn = document.getElementById("upFolderBtn");
     els.folderBreadcrumb = document.getElementById("folderBreadcrumb");
     els.projectSearch = document.getElementById("projectSearch");
@@ -107,6 +111,18 @@ const App = (() => {
     els.restoreMergeBtn.addEventListener("click", () => runRestore("merge"));
     els.restoreReplaceBtn.addEventListener("click", handleReplaceClick);
 
+    els.appBannerClose.addEventListener("click", hideBanner);
+
+    // Another tab took over the local database (e.g. a reload with new files).
+    window.addEventListener("fielddb:conflict", () => {
+      showBanner(
+        "This app was reloaded in another tab or window. Close the other " +
+        "copies and reload this page to avoid save problems."
+      );
+    });
+
+    setupTabDetection();
+
     els.upFolderBtn.addEventListener("click", goUpFolder);
     els.projectSearch.addEventListener("input", renderLibrary);
 
@@ -135,6 +151,7 @@ const App = (() => {
     await ProjectDB.open();
     await refreshLibrary();
     showLibrary();
+    warnIfStorageLow();
   }
 
   async function refreshLibrary() {
@@ -442,6 +459,7 @@ const App = (() => {
 
     closeProjectModal();
     await refreshLibrary();
+    warnIfStorageLow();
     await openProject(project.id);
   }
 
@@ -666,6 +684,77 @@ const App = (() => {
     link.remove();
 
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  /* ---------- Warning banner, multi-tab detection, storage check ---------- */
+
+  function showBanner(message) {
+    if (!els.appBanner) return;
+    els.appBannerText.textContent = message;
+    els.appBanner.classList.remove("hidden");
+  }
+
+  function hideBanner() {
+    if (!els.appBanner) return;
+    els.appBanner.classList.add("hidden");
+  }
+
+  /*
+    Detect the same app being open in more than one tab/window, which can
+    cause overlapping saves to the shared local database.
+  */
+  function setupTabDetection() {
+    if (typeof BroadcastChannel === "undefined") return;
+
+    try {
+      const channel = new BroadcastChannel("field-measurement-tabs");
+      const myId = Math.random().toString(16).slice(2);
+
+      channel.onmessage = event => {
+        const data = event.data || {};
+        if (data.tabId === myId) return;
+
+        if (data.type === "hello") {
+          channel.postMessage({ type: "here", tabId: myId });
+          warnMultipleTabs();
+        } else if (data.type === "here") {
+          warnMultipleTabs();
+        }
+      };
+
+      channel.postMessage({ type: "hello", tabId: myId });
+    } catch (error) {
+      /* BroadcastChannel unavailable or blocked: skip detection */
+    }
+  }
+
+  function warnMultipleTabs() {
+    showBanner(
+      "This app is open in more than one tab or window. To avoid save " +
+      "conflicts, keep only one open."
+    );
+  }
+
+  /*
+    Warn before the device actually runs out of website storage, rather than
+    only reporting it after a save has already failed.
+  */
+  async function warnIfStorageLow() {
+    if (!navigator.storage || !navigator.storage.estimate) return;
+
+    try {
+      const { usage, quota } = await navigator.storage.estimate();
+      if (!quota) return;
+
+      if (usage / quota > 0.9) {
+        showBanner(
+          "This device is almost out of storage for the app. Make a Backup, " +
+          "then delete work files you no longer need."
+        );
+      }
+    } catch (error) {
+      /* estimate unavailable: ignore */
+    }
   }
 
   function showLibrary() {

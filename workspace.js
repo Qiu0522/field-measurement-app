@@ -37,6 +37,9 @@ const Workspace = (() => {
   let measurementCallback = null;
   let measurementRawValue = "";
 
+  let directionCallback = null;
+  let fileNameCallback = null;
+
   let undoStack = [];
   let redoStack = [];
 
@@ -86,7 +89,17 @@ const Workspace = (() => {
     els.measurementModal = document.getElementById("measurementModal");
     els.measurementTitle = document.getElementById("measurementTitle");
     els.measurementDisplay = document.getElementById("measurementDisplay");
+    els.measurementError = document.getElementById("measurementError");
     els.cancelMeasurementBtn = document.getElementById("cancelMeasurementBtn");
+
+    els.directionModal = document.getElementById("directionModal");
+    els.cancelDirectionBtn = document.getElementById("cancelDirectionBtn");
+
+    els.fileNameModal = document.getElementById("fileNameModal");
+    els.fileNameModalTitle = document.getElementById("fileNameModalTitle");
+    els.fileNameInput = document.getElementById("fileNameInput");
+    els.confirmFileNameBtn = document.getElementById("confirmFileNameBtn");
+    els.cancelFileNameBtn = document.getElementById("cancelFileNameBtn");
 
     els.dataTypeModal = document.getElementById("dataTypeModal");
     els.dataTypeNameInput = document.getElementById("dataTypeNameInput");
@@ -276,6 +289,24 @@ const Workspace = (() => {
       .addEventListener("click", confirmMeasurement);
 
     els.cancelMeasurementBtn.addEventListener("click", cancelMeasurement);
+
+    els.directionModal.querySelectorAll("[data-direction]").forEach(button => {
+      button.addEventListener("click", () => {
+        chooseDirection(button.dataset.direction);
+      });
+    });
+
+    els.cancelDirectionBtn.addEventListener("click", () => chooseDirection(null));
+
+    els.confirmFileNameBtn.addEventListener("click", confirmFileName);
+    els.cancelFileNameBtn.addEventListener("click", () => closeFileNameModal(null));
+
+    els.fileNameInput.addEventListener("keydown", event => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        confirmFileName();
+      }
+    });
 
     els.cancelDataTypeBtn.addEventListener("click", () => {
       els.dataTypeModal.classList.add("hidden");
@@ -866,40 +897,28 @@ const Workspace = (() => {
       points.filter(point => point.dataId === dataType.id);
 
     if (!typePoints.length) {
-      alert("This data type has no points.");
+      setStatus("This data type has no points to order yet.");
       return;
     }
 
-    const direction = prompt(
-      "Type clockwise or counterclockwise:",
-      dataType.direction || "clockwise"
-    );
+    openDirectionModal(dataType.direction || "clockwise", direction => {
+      if (!direction) return;
 
-    if (!direction) return;
+      dataType.direction = direction;
+      assignMissingSidesForData(dataType.id);
+      dataType.ordered = true;
 
-    const cleanDirection = direction.trim().toLowerCase();
+      recalculateDataTypeOrder(dataType.id);
 
-    if (!["clockwise", "counterclockwise"].includes(cleanDirection)) {
-      alert("Please type clockwise or counterclockwise.");
-      return;
-    }
+      showOrderLabels = true;
+      updateLabelsButton();
+      refreshAllPoints();
+      renderDataSelect(dataType.id);
 
-    dataType.direction = cleanDirection;
-    assignMissingSidesForData(dataType.id);
-    dataType.ordered = true;
+      setStatus(`${dataType.name} ordered ${direction}.`);
 
-    recalculateDataTypeOrder(dataType.id);
-
-    showOrderLabels = true;
-    updateLabelsButton();
-    refreshAllPoints();
-    renderDataSelect(dataType.id);
-
-    setStatus(
-      `${dataType.name} ordered ${cleanDirection}.`
-    );
-
-    scheduleAutoSave();
+      scheduleAutoSave();
+    });
   }
 
   function assignMissingSidesForData(dataId) {
@@ -908,11 +927,11 @@ const Workspace = (() => {
 
     if (!typePoints.length) return;
 
-    const bounds = getBounds(typePoints);
+    const centroid = getCentroid(typePoints);
 
     typePoints.forEach(point => {
       if (!point.assignedSide) {
-        point.assignedSide = guessSide(point, bounds);
+        point.assignedSide = guessSide(point, centroid);
       }
     });
   }
@@ -933,7 +952,23 @@ const Workspace = (() => {
     });
   }
 
+  /*
+    Ordering is done by the angle of each point around the group's centre
+    (centroid), not by raw x/y against a bounding box. This keeps the walk
+    continuous around the perimeter even when the drawing is rotated/skewed
+    or the outline is irregular (L-shaped), which the old bounding-box method
+    got wrong. The output shape is unchanged: points are still grouped by
+    N/E/S/W side, each side numbered from 1, so the CSV and on-drawing labels
+    look exactly the same.
+  */
   function getOrderedPoints(dataId, direction) {
+    const typePoints =
+      points.filter(point => point.dataId === dataId);
+
+    if (!typePoints.length) return [];
+
+    const centroid = getCentroid(typePoints);
+
     const groups = {
       N: [],
       E: [],
@@ -941,37 +976,34 @@ const Workspace = (() => {
       W: []
     };
 
-    points
-      .filter(point => point.dataId === dataId)
-      .forEach(point => {
-        const side = point.assignedSide || "N";
-        groups[side].push(point);
+    typePoints.forEach(point => {
+      const angle = pointAngle(point, centroid);
+      const side = point.assignedSide || guessSide(point, centroid);
+
+      groups[side].push({
+        point,
+        key: traversalKey(angle, direction)
       });
+    });
 
-    if (direction === "clockwise") {
-      groups.N.sort((a, b) => a.x - b.x);
-      groups.E.sort((a, b) => a.y - b.y);
-      groups.S.sort((a, b) => b.x - a.x);
-      groups.W.sort((a, b) => b.y - a.y);
+    Object.keys(groups).forEach(side => {
+      groups[side].sort((a, b) => a.key - b.key);
+    });
 
-      return buildOrderedList(groups, ["N", "E", "S", "W"]);
-    }
+    const sideOrder = direction === "clockwise"
+      ? ["N", "E", "S", "W"]
+      : ["N", "W", "S", "E"];
 
-    groups.N.sort((a, b) => b.x - a.x);
-    groups.W.sort((a, b) => a.y - b.y);
-    groups.S.sort((a, b) => a.x - b.x);
-    groups.E.sort((a, b) => b.y - a.y);
-
-    return buildOrderedList(groups, ["N", "W", "S", "E"]);
+    return buildOrderedList(groups, sideOrder);
   }
 
   function buildOrderedList(groups, order) {
     const result = [];
 
     order.forEach(side => {
-      groups[side].forEach((point, index) => {
+      groups[side].forEach((entry, index) => {
         result.push({
-          point,
+          point: entry.point,
           side,
           seq: index + 1
         });
@@ -981,28 +1013,53 @@ const Workspace = (() => {
     return result;
   }
 
-  function getBounds(typePoints) {
-    const xs = typePoints.map(point => point.x);
-    const ys = typePoints.map(point => point.y);
+  function getCentroid(typePoints) {
+    let sumX = 0;
+    let sumY = 0;
+
+    typePoints.forEach(point => {
+      sumX += point.x;
+      sumY += point.y;
+    });
+
+    const count = typePoints.length || 1;
 
     return {
-      minX: Math.min(...xs),
-      maxX: Math.max(...xs),
-      minY: Math.min(...ys),
-      maxY: Math.max(...ys)
+      x: sumX / count,
+      y: sumY / count
     };
   }
 
-  function guessSide(point, bounds) {
-    const distances = {
-      N: Math.abs(point.y - bounds.minY),
-      E: Math.abs(point.x - bounds.maxX),
-      S: Math.abs(point.y - bounds.maxY),
-      W: Math.abs(point.x - bounds.minX)
-    };
+  /*
+    Angle of a point around the centre, in degrees 0..360.
+    Screen y grows downward, so it is flipped here: up = 90 (N),
+    right = 0 (E), down = 270 (S), left = 180 (W).
+  */
+  function pointAngle(point, centroid) {
+    const degrees =
+      Math.atan2(centroid.y - point.y, point.x - centroid.x) * 180 / Math.PI;
 
-    return Object.entries(distances)
-      .sort((a, b) => a[1] - b[1])[0][0];
+    return (degrees + 360) % 360;
+  }
+
+  function guessSide(point, centroid) {
+    const angle = pointAngle(point, centroid);
+
+    if (angle >= 45 && angle < 135) return "N";
+    if (angle >= 135 && angle < 225) return "W";
+    if (angle >= 225 && angle < 315) return "S";
+    return "E";
+  }
+
+  /*
+    A value that increases smoothly as you walk the perimeter in the chosen
+    direction, starting at the top. Because it is angle-based it has no
+    dependence on the drawing being axis-aligned.
+  */
+  function traversalKey(angle, direction) {
+    return direction === "clockwise"
+      ? (90 - angle + 360) % 360
+      : (angle - 90 + 360) % 360;
   }
 
   function toggleOrderLabels() {
@@ -1016,6 +1073,33 @@ const Workspace = (() => {
     measurementRawValue = String(value || "");
     els.measurementDisplay.value =
       measurementRawValue.replace(/ /g, "_");
+    hideMeasurementError();
+  }
+
+  /*
+    A valid measurement is: an optional minus sign, then a whole number,
+    an optional whole number followed by a fraction, or a bare fraction.
+    Denominators must be 1 or greater. Examples: 26, 26 3/8, -12 1/2, 3/16.
+    Rejects junk like //, 3/8/16, 3/0, and stray extra minus signs.
+  */
+  function isValidMeasurement(value) {
+    const fraction = "\\d+\\/[1-9]\\d*";
+    const pattern = new RegExp(
+      "^-?(\\d+(\\s" + fraction + ")?|" + fraction + ")$"
+    );
+
+    return pattern.test(String(value).trim());
+  }
+
+  function showMeasurementError(message) {
+    if (!els.measurementError) return;
+    els.measurementError.textContent = message;
+    els.measurementError.classList.remove("hidden");
+  }
+
+  function hideMeasurementError() {
+    if (!els.measurementError) return;
+    els.measurementError.classList.add("hidden");
   }
 
   function appendMeasurementValue(value) {
@@ -1066,14 +1150,31 @@ const Workspace = (() => {
     setMeasurementRawValue(initialValue || "");
     els.measurementTitle.textContent = title;
     measurementCallback = callback;
+    hideMeasurementError();
     els.measurementModal.classList.remove("hidden");
   }
 
   function confirmMeasurement() {
+    // Collapse any repeated spaces the keypad may have produced.
+    const value = measurementRawValue.trim().replace(/\s+/g, " ");
+
+    // Pressing OK with nothing typed behaves like Cancel.
+    if (!value) {
+      cancelMeasurement();
+      return;
+    }
+
+    if (!isValidMeasurement(value)) {
+      showMeasurementError(
+        "Check the format. Examples: 26, 26 3/8, -12 1/2, 3/16."
+      );
+      return;
+    }
+
     const callback = measurementCallback;
-    const value = measurementRawValue;
 
     measurementCallback = null;
+    hideMeasurementError();
     els.measurementModal.classList.add("hidden");
 
     if (callback) callback(value);
@@ -1082,7 +1183,55 @@ const Workspace = (() => {
   function cancelMeasurement() {
     measurementCallback = null;
     measurementRawValue = "";
+    hideMeasurementError();
     els.measurementModal.classList.add("hidden");
+  }
+
+  /* ---------- Order-direction and file-name modals (replace prompt) ---------- */
+
+  function openDirectionModal(current, callback) {
+    directionCallback = callback;
+
+    els.directionModal.querySelectorAll("[data-direction]").forEach(button => {
+      button.classList.toggle(
+        "selectedChoice",
+        button.dataset.direction === current
+      );
+    });
+
+    els.directionModal.classList.remove("hidden");
+  }
+
+  function chooseDirection(direction) {
+    const callback = directionCallback;
+    directionCallback = null;
+    els.directionModal.classList.add("hidden");
+    if (callback) callback(direction);
+  }
+
+  function openFileNameModal(title, defaultName, callback) {
+    fileNameCallback = callback;
+    els.fileNameModalTitle.textContent = title;
+    els.fileNameInput.value = defaultName || "";
+    els.fileNameModal.classList.remove("hidden");
+
+    setTimeout(() => {
+      els.fileNameInput.focus();
+      els.fileNameInput.select();
+    }, 50);
+  }
+
+  function confirmFileName() {
+    const value = els.fileNameInput.value.trim();
+    if (!value) return;
+    closeFileNameModal(value);
+  }
+
+  function closeFileNameModal(value) {
+    const callback = fileNameCallback;
+    fileNameCallback = null;
+    els.fileNameModal.classList.add("hidden");
+    if (callback) callback(value);
   }
 
   function bindCommentCanvas() {
@@ -1324,90 +1473,88 @@ const Workspace = (() => {
       recalculateDataTypeOrder(dataType.id);
     });
 
-    const fileNameInput =
-      prompt("Enter CSV file name:", project?.name || "measurements");
+    openFileNameModal("Export CSV", project?.name || "measurements", chosen => {
+      if (!chosen) return;
 
-    if (!fileNameInput) return;
+      const fileName =
+        chosen.toLowerCase().endsWith(".csv") ? chosen : chosen + ".csv";
 
-    const fileName =
-      fileNameInput.toLowerCase().endsWith(".csv")
-        ? fileNameInput
-        : fileNameInput + ".csv";
-
-    const grouped = {};
-
-    exportTypes.forEach(dataType => {
-      grouped[dataType.id] = getOrderedPoints(
-        dataType.id,
-        dataType.direction || "clockwise"
-      );
-    });
-
-    const maxRows = Math.max(
-      0,
-      ...exportTypes.map(dataType => grouped[dataType.id].length)
-    );
-
-    const headers = [];
-
-    exportTypes.forEach(dataType => {
-      headers.push(dataType.name + " Side");
-      headers.push(dataType.name + " Seq");
-      headers.push(dataType.name + " Measurement");
-      headers.push(dataType.name + " Warning");
-    });
-
-    let csv = headers.map(cleanCSV).join(",") + "\n";
-
-    for (let rowIndex = 0; rowIndex < maxRows; rowIndex += 1) {
-      const row = [];
+      const grouped = {};
 
       exportTypes.forEach(dataType => {
-        const item = grouped[dataType.id][rowIndex];
-
-        if (!item) {
-          row.push("", "", "", "");
-          return;
-        }
-
-        const point = item.point;
-
-        row.push(item.side);
-        row.push(item.seq);
-        row.push(point.measurement);
-
-        if (point.moveDistance > 80) {
-          row.push("Point moved a large distance; check order");
-        } else if (point.moved) {
-          row.push("Point moved");
-        } else {
-          row.push("");
-        }
+        grouped[dataType.id] = getOrderedPoints(
+          dataType.id,
+          dataType.direction || "clockwise"
+        );
       });
 
-      csv += row.map(cleanCSV).join(",") + "\n";
-    }
+      const maxRows = Math.max(
+        0,
+        ...exportTypes.map(dataType => grouped[dataType.id].length)
+      );
 
-    downloadBlob(
-      new Blob(
-        ["\ufeff" + csv],
-        { type: "text/csv;charset=utf-8" }
-      ),
-      fileName
-    );
+      const headers = [];
+
+      exportTypes.forEach(dataType => {
+        headers.push(dataType.name + " Side");
+        headers.push(dataType.name + " Seq");
+        headers.push(dataType.name + " Measurement");
+        headers.push(dataType.name + " Warning");
+      });
+
+      let csv = headers.map(cleanCSV).join(",") + "\n";
+
+      for (let rowIndex = 0; rowIndex < maxRows; rowIndex += 1) {
+        const row = [];
+
+        exportTypes.forEach(dataType => {
+          const item = grouped[dataType.id][rowIndex];
+
+          if (!item) {
+            row.push("", "", "", "");
+            return;
+          }
+
+          const point = item.point;
+
+          row.push(item.side);
+          row.push(item.seq);
+          row.push(point.measurement);
+
+          if (point.moveDistance > 80) {
+            row.push("Point moved a large distance; check order");
+          } else if (point.moved) {
+            row.push("Point moved");
+          } else {
+            row.push("");
+          }
+        });
+
+        csv += row.map(cleanCSV).join(",") + "\n";
+      }
+
+      downloadBlob(
+        new Blob(
+          ["\ufeff" + csv],
+          { type: "text/csv;charset=utf-8" }
+        ),
+        fileName
+      );
+    });
   }
 
-  async function exportPDF() {
-    const fileNameInput =
-      prompt("Enter PDF file name:", project?.name || "marked_drawing");
+  function exportPDF() {
+    openFileNameModal("Export PDF", project?.name || "marked_drawing", chosen => {
+      if (!chosen) return;
 
-    if (!fileNameInput) return;
+      const fileName =
+        chosen.toLowerCase().endsWith(".pdf") ? chosen : chosen + ".pdf";
 
-    const fileName =
-      fileNameInput.toLowerCase().endsWith(".pdf")
-        ? fileNameInput
-        : fileNameInput + ".pdf";
+      renderPdf(fileName);
+    });
+  }
 
+  async function renderPdf(fileName) {
     /*
       The old exporter used html2canvas at scale 4 on a PDF that was already
       rendered at high resolution. On iPad this can exceed Safari's canvas

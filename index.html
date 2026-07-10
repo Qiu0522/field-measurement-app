@@ -17,6 +17,11 @@
 </head>
 
 <body>
+  <div id="appBanner" class="appBanner hidden">
+    <span id="appBannerText"></span>
+    <button id="appBannerClose" type="button" aria-label="Dismiss">×</button>
+  </div>
+
   <!-- ========================= HOME ========================= -->
   <section id="homeView" class="view">
     <header class="homeHeader">
@@ -222,6 +227,8 @@
         aria-label="Measurement"
       >
 
+      <p id="measurementError" class="measurementError hidden"></p>
+
       <div class="measurementKeypad v6Keypad">
         <div class="v6MainGrid">
           <button data-key="7">7</button>
@@ -295,6 +302,36 @@
       </div>
 
       <button id="cancelSideBtn" class="fullWidthButton" type="button">Cancel</button>
+    </div>
+  </div>
+
+  <div id="directionModal" class="modalBackdrop hidden">
+    <div class="modalCard">
+      <h2>Order Direction</h2>
+      <p>Choose which way to walk around the points when numbering them.</p>
+
+      <div class="directionButtons">
+        <button data-direction="clockwise" type="button">↻ Clockwise</button>
+        <button data-direction="counterclockwise" type="button">↺ Counterclockwise</button>
+      </div>
+
+      <button id="cancelDirectionBtn" class="fullWidthButton" type="button">Cancel</button>
+    </div>
+  </div>
+
+  <div id="fileNameModal" class="modalBackdrop hidden">
+    <div class="modalCard">
+      <h2 id="fileNameModalTitle">Export</h2>
+
+      <label>
+        File name
+        <input id="fileNameInput" type="text" placeholder="measurements">
+      </label>
+
+      <div class="modalActions">
+        <button id="cancelFileNameBtn" type="button">Cancel</button>
+        <button id="confirmFileNameBtn" class="primaryButton" type="button">Export</button>
+      </div>
     </div>
   </div>
 

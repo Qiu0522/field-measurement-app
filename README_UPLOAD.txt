@@ -165,3 +165,42 @@ DEPLOY NOTE FOR FUTURE UPDATES
 - When you upload new app files, open sw.js and change CACHE_VERSION
   (for example v6-2 -> v6-3). This clears old cached copies so every
   device picks up the new version on the next launch.
+
+
+VERSION 6.3 — ORDERING, INPUT CHECK, AND UI FIXES
+
+SMARTER POINT ORDERING
+- Ordering now walks the perimeter by angle around the centre of the points,
+  instead of measuring distance to a bounding box.
+- This stays correct when the drawing is rotated/skewed or the outline is
+  irregular (for example L-shaped), which the old method could get wrong.
+- The output is unchanged in shape: points are still grouped by N/E/S/W with
+  each side numbered from 1, so CSV columns and on-drawing labels look the same.
+- Manual "Assign Side" still overrides the automatic guess.
+
+MEASUREMENT INPUT IS NOW CHECKED
+- Pressing OK checks the format before saving.
+- Valid examples: 26, 26 3/8, -12 1/2, 3/16.
+- Junk like //, 3/8/16, or 3/0 is rejected with a message; the keypad stays
+  open so you can fix it. This keeps bad values out of the CSV.
+
+NO MORE POP-UP TEXT BOXES FOR ORDERING/EXPORT
+- Choosing clockwise/counterclockwise now uses on-screen buttons.
+- CSV and PDF file names now use a proper dialog with a text box.
+- These replace the old prompt() boxes, which iOS can disable when the app
+  is added to the Home Screen.
+
+MULTI-TAB / MULTI-WINDOW WARNING
+- If the app is open in more than one tab or window, a yellow banner warns
+  you to keep only one open, which avoids overlapping saves.
+- A banner also appears if another tab reloads the app with new files.
+
+STORAGE WARNING
+- If the device is almost out of website storage, a banner suggests making a
+  Backup and deleting unused work files, before a save actually fails.
+
+FILES CHANGED IN 6.3: index.html, style.css, db.js, workspace.js, app.js, sw.js
+(save.js and manifest.json are unchanged, but upload all 8 files together.)
+
+REMINDER: sw.js CACHE_VERSION was bumped to v6-3 so every device picks up
+this update on its next online launch.
