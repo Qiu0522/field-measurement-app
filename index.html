@@ -317,7 +317,8 @@
       <input
         id="measurementInput"
         type="text"
-        inputmode="decimal"
+        inputmode="none"
+        readonly
         autocomplete="off"
         autocapitalize="off"
         spellcheck="false"
@@ -341,8 +342,8 @@
         <button onclick="appendMeasurement('/')">/</button>
 
         <button onclick="appendMeasurement('0')">0</button>
+        <button onclick="toggleNegative()">−</button>
         <button onclick="appendMeasurement('.')">.</button>
-        <button onclick="measurementClear()">Clear</button>
         <button onclick="confirmMeasurement()">OK</button>
 
         <button onclick="appendFraction('1/8')">1/8</button>
@@ -353,11 +354,13 @@
         <button onclick="appendFraction('5/8')">5/8</button>
         <button onclick="appendFraction('3/4')">3/4</button>
         <button onclick="appendFraction('7/8')">7/8</button>
-        <button onclick="cancelMeasurement()">Cancel</button>
+        <button onclick="measurementClear()">Clear</button>
+
+        <button onclick="cancelMeasurement()" style="grid-column: 1 / -1;">Cancel</button>
       </div>
 
       <div class="smallHint">
-        This custom keypad supports whole numbers, decimals, and construction fractions.
+        Use the custom keypad only. The iPad keyboard will not open. Negative values are supported.
       </div>
     </div>
   </div>
@@ -477,11 +480,6 @@
 
     measurementInput.addEventListener("input", function () {
       this.value = this.value.replace(/[^0-9./\-\s]/g, "");
-    });
-
-    measurementInput.addEventListener("keydown", function (event) {
-      if (event.key === "Enter") confirmMeasurement();
-      if (event.key === "Escape") cancelMeasurement();
     });
 
     dataSelect.addEventListener("change", handleDataSelectChange);
@@ -1058,18 +1056,12 @@
       measurementCallback = callback;
       measurementBackdrop.style.display = "flex";
 
-      setTimeout(function () {
-        measurementInput.focus();
-        measurementInput.setSelectionRange(
-          measurementInput.value.length,
-          measurementInput.value.length
-        );
-      }, 50);
+      // Do not focus the input on iPad. The custom keypad is the only input method.
+      measurementInput.blur();
     }
 
     function appendMeasurement(value) {
       measurementInput.value += value;
-      measurementInput.focus();
     }
 
     function appendFraction(value) {
@@ -1080,17 +1072,24 @@
       }
 
       measurementInput.value += value;
-      measurementInput.focus();
+    }
+
+    function toggleNegative() {
+      const value = measurementInput.value.trimStart();
+
+      if (value.startsWith("-")) {
+        measurementInput.value = value.slice(1);
+      } else {
+        measurementInput.value = "-" + value;
+      }
     }
 
     function measurementBackspace() {
       measurementInput.value = measurementInput.value.slice(0, -1);
-      measurementInput.focus();
     }
 
     function measurementClear() {
       measurementInput.value = "";
-      measurementInput.focus();
     }
 
     function confirmMeasurement() {
