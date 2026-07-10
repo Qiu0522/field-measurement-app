@@ -10,80 +10,144 @@
     body { font-family: Arial; margin: 0; overflow: hidden; }
 
     #toolbar {
-      padding: 10px; background: #eee; position: sticky; top: 0; z-index: 100;
-      font-size: 13px; line-height: 28px; border-bottom: 1px solid #ccc;
+      padding: 10px;
+      background: #eee;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      font-size: 13px;
+      line-height: 28px;
+      border-bottom: 1px solid #ccc;
     }
 
     button, select, input { margin: 2px; font-size: 13px; }
 
     button {
-      background: #f2f2f2; border: 1px solid #999; border-radius: 4px; padding: 3px 8px;
+      background: #f2f2f2;
+      border: 1px solid #999;
+      border-radius: 4px;
+      padding: 3px 8px;
     }
 
     .activeTool {
-      background: #666 !important; color: white !important; border: 2px solid #333 !important; font-weight: bold;
+      background: #666 !important;
+      color: white !important;
+      border: 2px solid #333 !important;
+      font-weight: bold;
     }
 
     #drawingWrapper {
-      overflow: auto; width: 100vw; height: calc(100vh - 95px);
-      background: #f5f5f5; touch-action: pan-x pan-y pinch-zoom;
+      overflow: auto;
+      width: 100vw;
+      height: calc(100vh - 95px);
+      background: #f5f5f5;
+      touch-action: pan-x pan-y pinch-zoom;
     }
 
     #drawingArea {
-      position: relative; display: inline-block; transform-origin: top left;
-      margin: 10px; border: 1px solid #ccc; background: white;
+      position: relative;
+      display: inline-block;
+      transform-origin: top left;
+      margin: 10px;
+      border: 1px solid #ccc;
+      background: white;
     }
 
     #drawing, #pdfCanvas, #commentCanvas { display: block; }
 
     #commentCanvas {
-      position: absolute; left: 0; top: 0; z-index: 5; pointer-events: none;
+      position: absolute;
+      left: 0;
+      top: 0;
+      z-index: 5;
+      pointer-events: none;
     }
 
     .drawActive #commentCanvas {
-      pointer-events: auto; cursor: crosshair; touch-action: none;
+      pointer-events: auto;
+      cursor: crosshair;
+      touch-action: none;
     }
 
     .point {
-      position: absolute; background: transparent; border: none; outline: none; padding: 0;
-      min-width: 20px; text-align: center; font-size: 30px; font-weight: bold;
-      cursor: pointer; transform: translate(-50%, -50%); white-space: nowrap;
-      user-select: none; z-index: 10; touch-action: none;
+      position: absolute;
+      background: transparent;
+      border: none;
+      outline: none;
+      padding: 0;
+      min-width: 20px;
+      text-align: center;
+      font-size: 30px;
+      font-weight: bold;
+      cursor: pointer;
+      transform: translate(-50%, -50%);
+      white-space: nowrap;
+      user-select: none;
+      z-index: 10;
+      touch-action: none;
     }
 
-    .point.selected { text-decoration: underline; background: rgba(255,255,0,0.35); }
-
-    .sideMarker {
-      position: absolute; width: 14px; height: 14px; border-radius: 50%;
-      background: orange; transform: translate(-50%, -50%); z-index: 15;
-      border: 2px solid black;
+    .point.selected {
+      text-decoration: underline;
+      background: rgba(255,255,0,0.35);
     }
 
     #status { margin-left: 10px; font-weight: bold; }
 
     #contextMenu {
-      position: fixed; display: none; background: white; border: 1px solid #aaa;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.25); z-index: 999; padding: 4px;
+      position: fixed;
+      display: none;
+      background: white;
+      border: 1px solid #aaa;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+      z-index: 999;
+      padding: 4px;
     }
 
     #contextMenu button {
-      display: block; width: 140px; text-align: left; background: white; border: none; padding: 8px;
+      display: block;
+      width: 160px;
+      text-align: left;
+      background: white;
+      border: none;
+      padding: 8px;
     }
 
     #contextMenu button:hover { background: #eee; }
 
     #measurementModal {
-      display: none; position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
-      background: white; border: 1px solid #999; box-shadow: 0 4px 16px rgba(0,0,0,0.3);
-      z-index: 2000; padding: 14px; width: 320px; border-radius: 8px;
+      display: none;
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      background: white;
+      border: 1px solid #999;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+      z-index: 2000;
+      padding: 14px;
+      width: 320px;
+      border-radius: 8px;
     }
 
     #measurementInput {
-      width: 95%; font-size: 24px; padding: 8px; margin-bottom: 8px; text-align: center;
+      width: 95%;
+      font-size: 24px;
+      padding: 8px;
+      margin-bottom: 8px;
+      text-align: center;
     }
 
-    .keypad { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-    .keypad button { font-size: 18px; padding: 10px; }
+    .keypad {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+    }
+
+    .keypad button {
+      font-size: 18px;
+      padding: 10px;
+    }
   </style>
 </head>
 
@@ -92,17 +156,12 @@
   <div id="toolbar">
     <input type="file" id="fileInput" accept="image/*,.pdf">
 
-    Work File:
-    <input type="text" id="workName" value="Project_Level" style="width:120px;">
-    <button onclick="saveWork()">Save</button>
-    <button onclick="loadWork()">Load</button>
-
     Select Data:
     <select id="dataSelect" onchange="handleDataSelectChange()"></select>
 
     <button id="addBtn" onclick="setPointMode('add')">Add Points</button>
     <button id="lockBtn" onclick="setPointMode('lock')">🔒 Lock Points</button>
-    <button id="sideBtn" onclick="startSideSetup()">Set Sides</button>
+    <button id="previewBtn" onclick="finishCurrentData()">Finish Data / Preview Order</button>
 
     <button onclick="setPenMode()" id="penBtn">✏️</button>
     <button onclick="setEraserMode()" id="eraserBtn" title="Eraser">
@@ -132,6 +191,7 @@
   <div id="contextMenu">
     <button onclick="contextEdit()">Edit Measurement</button>
     <button onclick="contextMove()">Move Point</button>
+    <button onclick="contextAssignSide()">Assign Side</button>
     <button onclick="contextDelete()">Delete Point</button>
   </div>
 
@@ -194,22 +254,7 @@
     let dragStartY = 0;
 
     let measurementCallback = null;
-
-    let sideSetupMode = false;
-    let sideSetupIndex = 0;
-    let sideTempPoints = [];
-    let sideSegments = {};
-    const sideSteps = [
-      { side: "N", label: "North LEFT corner" },
-      { side: "N", label: "North RIGHT corner" },
-      { side: "E", label: "East TOP corner" },
-      { side: "E", label: "East BOTTOM corner" },
-      { side: "S", label: "South RIGHT corner" },
-      { side: "S", label: "South LEFT corner" },
-      { side: "W", label: "West BOTTOM corner" },
-      { side: "W", label: "West TOP corner" }
-    ];
-    const sideOrder = ["N", "E", "S", "W"];
+    let exportDirection = "clockwise";
 
     let dataTypes = [
       { id: "data1", name: "测量落差", color: "#0066ff", counter: 1, export: true },
@@ -230,12 +275,11 @@
     const statusText = document.getElementById("status");
     const dataSelect = document.getElementById("dataSelect");
     const contextMenu = document.getElementById("contextMenu");
-    const workNameInput = document.getElementById("workName");
     const penBtn = document.getElementById("penBtn");
     const eraserBtn = document.getElementById("eraserBtn");
     const addBtn = document.getElementById("addBtn");
     const lockBtn = document.getElementById("lockBtn");
-    const sideBtn = document.getElementById("sideBtn");
+    const previewBtn = document.getElementById("previewBtn");
     const measurementModal = document.getElementById("measurementModal");
     const measurementInput = document.getElementById("measurementInput");
 
@@ -254,7 +298,6 @@
       if (!file) return;
 
       currentFileName = file.name;
-      workNameInput.value = file.name.replace(/\.[^/.]+$/, "");
       clearAllPoints();
 
       if (file.type === "application/pdf") loadPDF(file);
@@ -301,7 +344,7 @@
             page.render({ canvasContext: context, viewport });
 
             setupCommentCanvas(viewport.width, viewport.height);
-            statusText.textContent = "PDF page 1 loaded. Use Set Sides before final CSV export.";
+            statusText.textContent = "PDF page 1 loaded. Add points, then preview order.";
           });
       };
 
@@ -367,13 +410,12 @@
     function updateToolButtons() {
       addBtn.classList.remove("activeTool");
       lockBtn.classList.remove("activeTool");
-      sideBtn.classList.remove("activeTool");
+      previewBtn.classList.remove("activeTool");
       penBtn.classList.remove("activeTool");
       eraserBtn.classList.remove("activeTool");
 
       if (pointMode === "add") addBtn.classList.add("activeTool");
       if (pointMode === "lock") lockBtn.classList.add("activeTool");
-      if (sideSetupMode) sideBtn.classList.add("activeTool");
       if (commentTool === "pen") penBtn.classList.add("activeTool");
       if (commentTool === "eraser") eraserBtn.classList.add("activeTool");
     }
@@ -381,7 +423,6 @@
     function setPointMode(newMode) {
       pointMode = newMode;
       movingPoint = null;
-      sideSetupMode = false;
       contextMenu.style.display = "none";
       document.querySelectorAll(".point").forEach(p => p.classList.remove("selected"));
 
@@ -389,61 +430,6 @@
       if (pointMode === "lock") statusText.textContent = "Lock Points on. Blank tap will not add points.";
 
       updateToolButtons();
-    }
-
-    function startSideSetup() {
-      sideSetupMode = true;
-      pointMode = "lock";
-      setCommentTool("none");
-      sideSetupIndex = 0;
-      sideTempPoints = [];
-      sideSegments = {};
-      document.querySelectorAll(".sideMarker").forEach(m => m.remove());
-      statusText.textContent = "Set Sides: click " + sideSteps[0].label;
-      updateToolButtons();
-    }
-
-    function handleSideSetupClick(x, y) {
-      const step = sideSteps[sideSetupIndex];
-      sideTempPoints.push({ side: step.side, x, y });
-      createSideMarker(x, y);
-
-      sideSetupIndex++;
-
-      if (sideSetupIndex >= sideSteps.length) {
-        buildSideSegments();
-        sideSetupMode = false;
-        statusText.textContent = "Sides saved. CSV will sort by N → E → S → W.";
-        updateToolButtons();
-        autoSave();
-        return;
-      }
-
-      statusText.textContent = "Set Sides: click " + sideSteps[sideSetupIndex].label;
-    }
-
-    function createSideMarker(x, y) {
-      const div = document.createElement("div");
-      div.className = "sideMarker";
-      div.style.left = x + "px";
-      div.style.top = y + "px";
-      drawingArea.appendChild(div);
-    }
-
-    function buildSideSegments() {
-      sideSegments = {};
-
-      for (let i = 0; i < sideTempPoints.length; i += 2) {
-        const a = sideTempPoints[i];
-        const b = sideTempPoints[i + 1];
-
-        sideSegments[a.side] = {
-          x1: a.x,
-          y1: a.y,
-          x2: b.x,
-          y2: b.y
-        };
-      }
     }
 
     function setPenMode() {
@@ -479,11 +465,6 @@
 
       const pos = getDrawingPos(event);
 
-      if (sideSetupMode) {
-        handleSideSetupClick(pos.x, pos.y);
-        return;
-      }
-
       if (movingPoint) {
         movePoint(movingPoint, pos.x, pos.y);
         movingPoint = null;
@@ -513,7 +494,10 @@
         y,
         measurement: measurement || "",
         moved: false,
-        moveDistance: 0
+        moveDistance: 0,
+        manualSide: "",
+        previewSide: "",
+        previewSeq: ""
       };
 
       points.push(point);
@@ -532,7 +516,6 @@
 
       div.className = "point";
       div.dataset.uid = point.uid;
-      div.textContent = point.measurement || point.number;
       div.style.left = point.x + "px";
       div.style.top = point.y + "px";
 
@@ -625,6 +608,7 @@
       });
 
       drawingArea.appendChild(div);
+      updatePointElement(point);
     }
 
     function openMeasurementModal(initialValue, callback) {
@@ -719,6 +703,27 @@
       updateToolButtons();
     }
 
+    function contextAssignSide() {
+      contextMenu.style.display = "none";
+      if (!contextPoint) return;
+
+      const side = prompt("Assign side: N, E, S, or W", contextPoint.manualSide || contextPoint.previewSide || "");
+
+      if (!side) return;
+
+      const cleanSide = side.trim().toUpperCase();
+
+      if (!["N", "E", "S", "W"].includes(cleanSide)) {
+        alert("Please enter only N, E, S, or W.");
+        return;
+      }
+
+      contextPoint.manualSide = cleanSide;
+      contextPoint.previewSide = cleanSide;
+      updatePointElement(contextPoint);
+      autoSave();
+    }
+
     function contextDelete() {
       contextMenu.style.display = "none";
       if (contextPoint) deletePoint(contextPoint);
@@ -768,7 +773,13 @@
 
       const dt = getDataType(point.dataId);
 
-      element.textContent = point.measurement || point.number;
+      let label = point.measurement || point.number;
+
+      if (point.previewSide && point.previewSeq) {
+        label = point.previewSide + point.previewSeq + " " + (point.measurement || "");
+      }
+
+      element.textContent = label;
       element.style.left = point.x + "px";
       element.style.top = point.y + "px";
       element.style.color = dt ? dt.color : "black";
@@ -784,28 +795,196 @@
       points.forEach(updatePointElement);
     }
 
-    function assignSide(point) {
-      if (Object.keys(sideSegments).length < 4) {
-        return { side: "", sideIndex: 999, t: point.number };
+    function finishCurrentData() {
+      const dataId = dataSelect.value;
+      const dt = getDataType(dataId);
+
+      if (!dt) return;
+
+      const direction = prompt(
+        "Export order? Type clockwise or counterclockwise:",
+        exportDirection
+      );
+
+      if (!direction) return;
+
+      const cleanDirection = direction.trim().toLowerCase();
+
+      if (!["clockwise", "counterclockwise"].includes(cleanDirection)) {
+        alert("Please type clockwise or counterclockwise.");
+        return;
       }
 
-      let best = null;
+      exportDirection = cleanDirection;
 
-      sideOrder.forEach((side, index) => {
-        const seg = sideSegments[side];
-        const result = distanceToSegment(point.x, point.y, seg.x1, seg.y1, seg.x2, seg.y2);
+      const ordered = getOrderedPointsForData(dataId, exportDirection);
 
-        if (!best || result.distance < best.distance) {
-          best = {
-            side,
-            sideIndex: index,
-            t: result.t,
-            distance: result.distance
-          };
+      ordered.forEach(item => {
+        item.point.previewSide = item.side;
+        item.point.previewSeq = item.seq;
+        updatePointElement(item.point);
+      });
+
+      statusText.textContent = dt.name + " previewed as " + exportDirection + ". Long-press point → Assign Side if needed.";
+    }
+
+    function getOrderedPointsForData(dataId, direction) {
+      const pts = points.filter(p => p.dataId === dataId);
+
+      if (pts.length === 0) return [];
+
+      const groups = groupPointsByPerimeterSides(pts);
+
+      if (direction === "clockwise") {
+        groups.N.sort((a, b) => a.x - b.x);
+        groups.E.sort((a, b) => a.y - b.y);
+        groups.S.sort((a, b) => b.x - a.x);
+        groups.W.sort((a, b) => b.y - a.y);
+
+        return buildOrderedList(groups, ["N", "E", "S", "W"]);
+      }
+
+      if (direction === "counterclockwise") {
+        groups.N.sort((a, b) => b.x - a.x);
+        groups.W.sort((a, b) => a.y - b.y);
+        groups.S.sort((a, b) => a.x - b.x);
+        groups.E.sort((a, b) => b.y - a.y);
+
+        return buildOrderedList(groups, ["N", "W", "S", "E"]);
+      }
+
+      return [];
+    }
+
+    function groupPointsByPerimeterSides(pts) {
+      const groups = { N: [], E: [], S: [], W: [] };
+
+      const manualPts = [];
+      const autoPts = [];
+
+      pts.forEach(p => {
+        if (p.manualSide && groups[p.manualSide]) {
+          groups[p.manualSide].push(p);
+          manualPts.push(p);
+        } else {
+          autoPts.push(p);
         }
       });
 
-      return best;
+      if (autoPts.length === 0) return groups;
+
+      const hull = convexHull(autoPts);
+
+      const xs = autoPts.map(p => p.x);
+      const ys = autoPts.map(p => p.y);
+      const center = {
+        x: (Math.min(...xs) + Math.max(...xs)) / 2,
+        y: (Math.min(...ys) + Math.max(...ys)) / 2
+      };
+
+      autoPts.forEach(p => {
+        const side = guessSideFromHull(p, hull, center);
+        groups[side].push(p);
+      });
+
+      return groups;
+    }
+
+    function convexHull(pointsList) {
+      const pts = pointsList
+        .map(p => ({ x: p.x, y: p.y }))
+        .sort((a, b) => a.x === b.x ? a.y - b.y : a.x - b.x);
+
+      if (pts.length <= 3) return pts;
+
+      function cross(o, a, b) {
+        return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+      }
+
+      const lower = [];
+      for (const p of pts) {
+        while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) {
+          lower.pop();
+        }
+        lower.push(p);
+      }
+
+      const upper = [];
+      for (let i = pts.length - 1; i >= 0; i--) {
+        const p = pts[i];
+        while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) {
+          upper.pop();
+        }
+        upper.push(p);
+      }
+
+      upper.pop();
+      lower.pop();
+
+      return lower.concat(upper);
+    }
+
+    function guessSideFromHull(point, hull, center) {
+      if (hull.length < 2) {
+        return guessSideByBoundingBox(point, [point]);
+      }
+
+      let bestEdge = null;
+
+      for (let i = 0; i < hull.length; i++) {
+        const a = hull[i];
+        const b = hull[(i + 1) % hull.length];
+
+        const result = distanceToSegment(point.x, point.y, a.x, a.y, b.x, b.y);
+
+        if (!bestEdge || result.distance < bestEdge.distance) {
+          bestEdge = {
+            a,
+            b,
+            distance: result.distance
+          };
+        }
+      }
+
+      const midX = (bestEdge.a.x + bestEdge.b.x) / 2;
+      const midY = (bestEdge.a.y + bestEdge.b.y) / 2;
+      const dx = bestEdge.b.x - bestEdge.a.x;
+      const dy = bestEdge.b.y - bestEdge.a.y;
+
+      if (Math.abs(dx) >= Math.abs(dy)) {
+        return midY < center.y ? "N" : "S";
+      } else {
+        return midX > center.x ? "E" : "W";
+      }
+    }
+
+    function guessSideByBoundingBox(point, pts) {
+      const xs = pts.map(p => p.x);
+      const ys = pts.map(p => p.y);
+
+      const minX = Math.min(...xs);
+      const maxX = Math.max(...xs);
+      const minY = Math.min(...ys);
+      const maxY = Math.max(...ys);
+
+      const distances = {
+        N: Math.abs(point.y - minY),
+        E: Math.abs(point.x - maxX),
+        S: Math.abs(point.y - maxY),
+        W: Math.abs(point.x - minX)
+      };
+
+      let bestSide = "N";
+      let bestDistance = distances.N;
+
+      Object.keys(distances).forEach(side => {
+        if (distances[side] < bestDistance) {
+          bestSide = side;
+          bestDistance = distances[side];
+        }
+      });
+
+      return bestSide;
     }
 
     function distanceToSegment(px, py, x1, y1, x2, y2) {
@@ -825,6 +1004,22 @@
       const dist = Math.sqrt(Math.pow(px - closestX, 2) + Math.pow(py - closestY, 2));
 
       return { distance: dist, t };
+    }
+
+    function buildOrderedList(groups, sideOrder) {
+      const result = [];
+
+      sideOrder.forEach(side => {
+        groups[side].forEach((point, index) => {
+          result.push({
+            point: point,
+            side: side,
+            seq: index + 1
+          });
+        });
+      });
+
+      return result;
     }
 
     function undo() {
@@ -922,37 +1117,38 @@
     }
 
     function exportCSV() {
-      let fileName = prompt("Enter CSV file name:", workNameInput.value || "measurements");
+      let direction = prompt(
+        "Export order? Type clockwise or counterclockwise:",
+        exportDirection
+      );
+
+      if (!direction) return;
+
+      direction = direction.trim().toLowerCase();
+
+      if (!["clockwise", "counterclockwise"].includes(direction)) {
+        alert("Please type clockwise or counterclockwise.");
+        return;
+      }
+
+      exportDirection = direction;
+
+      let fileName = prompt("Enter CSV file name:", "measurements");
       if (!fileName) return;
       if (!fileName.endsWith(".csv")) fileName += ".csv";
 
       const exportTypes = dataTypes.filter(dt => dt.export);
+
       const grouped = {};
 
-      exportTypes.forEach(dt => grouped[dt.id] = []);
-
-      points.forEach(p => {
-        if (grouped[p.dataId]) {
-          const sideInfo = assignSide(p);
-          grouped[p.dataId].push({
-            point: p,
-            side: sideInfo.side,
-            sideIndex: sideInfo.sideIndex,
-            t: sideInfo.t
-          });
-        }
-      });
-
       exportTypes.forEach(dt => {
-        grouped[dt.id].sort((a, b) => {
-          if (a.sideIndex !== b.sideIndex) return a.sideIndex - b.sideIndex;
-          return a.t - b.t;
-        });
+        grouped[dt.id] = getOrderedPointsForData(dt.id, exportDirection);
       });
 
       const maxRows = Math.max(...exportTypes.map(dt => grouped[dt.id].length), 0);
 
       let headers = [];
+
       exportTypes.forEach(dt => {
         headers.push(dt.name + " Side");
         headers.push(dt.name + " Seq");
@@ -970,16 +1166,17 @@
 
           if (item) {
             const p = item.point;
+
             row.push(item.side);
-            row.push(i + 1);
+            row.push(item.seq);
             row.push(p.measurement);
 
             let warning = "";
 
-            if (Object.keys(sideSegments).length < 4) {
-              warning = "WARNING: sides not set, order may be input order";
+            if (p.manualSide) {
+              warning = "Manual side assigned";
             } else if (p.moveDistance > 80) {
-              warning = "WARNING: " + dt.name + " point moved a large distance, check order";
+              warning = "Point moved a large distance, check order";
             } else if (p.moved) {
               warning = "Point moved";
             }
@@ -1008,7 +1205,7 @@
     }
 
     function exportPDF() {
-      let fileName = prompt("Enter PDF file name:", workNameInput.value || "marked_drawing");
+      let fileName = prompt("Enter PDF file name:", "marked_drawing");
       if (!fileName) return;
       if (!fileName.endsWith(".pdf")) fileName += ".pdf";
 
@@ -1121,21 +1318,7 @@
     }
 
     function getWorkKey() {
-      return "fieldMeasurement_" + (workNameInput.value || "default");
-    }
-
-    function saveWork() {
-      const data = {
-        points,
-        dataTypes,
-        currentFileName,
-        commentImageData,
-        sideSegments,
-        sideTempPoints
-      };
-
-      localStorage.setItem(getWorkKey(), JSON.stringify(data));
-      statusText.textContent = "Saved: " + workNameInput.value;
+      return "fieldMeasurement_" + (currentFileName || "default");
     }
 
     function autoSave() {
@@ -1145,8 +1328,7 @@
           dataTypes,
           currentFileName,
           commentImageData,
-          sideSegments,
-          sideTempPoints
+          exportDirection
         };
 
         localStorage.setItem(getWorkKey(), JSON.stringify(data));
@@ -1155,54 +1337,15 @@
       }
     }
 
-    function loadWork() {
-      const raw = localStorage.getItem(getWorkKey());
-
-      if (!raw) {
-        alert("No saved work found for: " + workNameInput.value);
-        return;
-      }
-
-      const data = JSON.parse(raw);
-
-      clearAllPoints();
-
-      points = data.points || [];
-      dataTypes = data.dataTypes || dataTypes;
-      currentFileName = data.currentFileName || "";
-      commentImageData = data.commentImageData || "";
-      sideSegments = data.sideSegments || {};
-      sideTempPoints = data.sideTempPoints || [];
-
-      renderDataControls();
-      points.forEach(createPointElement);
-      redrawSideMarkers();
-
-      if (commentImageData && commentCanvas.width > 0) restoreCommentImage(commentImageData);
-
-      statusText.textContent = "Loaded saved work. Open the same PDF/image if drawing is blank.";
-      updateToolButtons();
-    }
-
-    function redrawSideMarkers() {
-      document.querySelectorAll(".sideMarker").forEach(m => m.remove());
-      sideTempPoints.forEach(p => createSideMarker(p.x, p.y));
-    }
-
     function clearAllPoints() {
       points = [];
       undoStack = [];
       redoStack = [];
       movingPoint = null;
       zoomLevel = 1;
-      sideSetupMode = false;
-      sideSetupIndex = 0;
-      sideTempPoints = [];
-      sideSegments = {};
       drawingArea.style.transform = "scale(1)";
       dataTypes.forEach(dt => dt.counter = 1);
       document.querySelectorAll(".point").forEach(p => p.remove());
-      document.querySelectorAll(".sideMarker").forEach(p => p.remove());
 
       if (commentCanvas.width > 0) {
         const ctx = commentCanvas.getContext("2d");
