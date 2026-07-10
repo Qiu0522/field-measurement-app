@@ -1,0 +1,923 @@
+* {
+  box-sizing: border-box;
+}
+
+:root {
+  --background: #f4f5f7;
+  --surface: #ffffff;
+  --border: #d7d9dd;
+  --text: #202124;
+  --muted: #6f7378;
+  --primary: #276ef1;
+  --danger: #c9342f;
+  --active: #55585d;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: Arial, Helvetica, sans-serif;
+  color: var(--text);
+  background: var(--background);
+  overflow: hidden;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.view {
+  width: 100%;
+  height: 100%;
+}
+
+/* --------------------------- Home --------------------------- */
+
+#homeView {
+  overflow: auto;
+  padding: 22px;
+}
+
+.homeHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  max-width: 1400px;
+  margin: 0 auto 18px;
+}
+
+.homeHeader h1 {
+  margin: 0 0 6px;
+  font-size: 30px;
+}
+
+.homeHeader p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.primaryButton {
+  color: white;
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.largeButton {
+  min-height: 46px;
+  padding: 10px 18px;
+  border: 1px solid;
+  border-radius: 9px;
+  font-weight: bold;
+}
+
+.homeTools {
+  display: flex;
+  gap: 10px;
+  max-width: 1400px;
+  margin: 0 auto 20px;
+}
+
+.homeTools input,
+.homeTools select {
+  min-height: 42px;
+  padding: 8px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: white;
+}
+
+.homeTools input {
+  flex: 1;
+}
+
+.libraryGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(245px, 1fr));
+  gap: 16px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.libraryCard {
+  position: relative;
+  min-height: 210px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.libraryCard:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 7px 18px rgba(0, 0, 0, 0.1);
+}
+
+.projectPreview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 110px;
+  margin-bottom: 12px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #eef0f3;
+  font-size: 40px;
+}
+
+.projectPreview canvas {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.projectName {
+  margin: 0 36px 4px 0;
+  overflow: hidden;
+  font-size: 17px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.projectMeta,
+.projectUpdated {
+  margin: 3px 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.cardMenuButton {
+  position: absolute;
+  top: 12px;
+  right: 10px;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  font-size: 20px;
+}
+
+.cardMenuButton:hover {
+  background: #eceef1;
+}
+
+.cardOpenArea {
+  cursor: pointer;
+}
+
+.emptyState {
+  max-width: 720px;
+  margin: 80px auto;
+  padding: 38px;
+  border: 1px dashed #b9bdc4;
+  border-radius: 14px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.emptyIcon {
+  font-size: 52px;
+}
+
+/* ------------------------- Workspace ------------------------ */
+
+#workspaceView {
+  overflow: hidden;
+}
+
+#toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 7px;
+  border-bottom: 1px solid #bfc2c7;
+  background: #eeeeef;
+  z-index: 100;
+}
+
+.toolbarButton {
+  min-height: 35px;
+  padding: 5px 9px;
+  border: 1px solid #96999e;
+  border-radius: 5px;
+  background: #f7f7f7;
+}
+
+.toolbarButton.activeTool {
+  color: white;
+  border-color: #333;
+  background: var(--active);
+  font-weight: bold;
+}
+
+.iconButton {
+  min-width: 38px;
+  padding: 5px;
+}
+
+.workspaceTitle {
+  max-width: 210px;
+  padding: 0 7px;
+  overflow: hidden;
+  font-weight: bold;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compactLabel {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.compactLabel select {
+  min-height: 35px;
+  max-width: 240px;
+}
+
+.saveIndicator {
+  padding: 3px 7px;
+  border-radius: 12px;
+  color: #28613d;
+  background: #dff3e5;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.saveIndicator.saving {
+  color: #7b5a11;
+  background: #fff0bf;
+}
+
+.statusText {
+  flex: 1 1 250px;
+  min-width: 180px;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+#drawingWrapper {
+  width: 100vw;
+  height: calc(100vh - 88px);
+  overflow: auto;
+  background: #dedfe2;
+  touch-action: pan-x pan-y pinch-zoom;
+  -webkit-overflow-scrolling: touch;
+}
+
+#drawingArea {
+  position: relative;
+  display: inline-block;
+  margin: 12px;
+  border: 1px solid #b8bbc0;
+  background: white;
+  transform-origin: top left;
+}
+
+#drawingImage,
+#pdfCanvas {
+  display: block;
+  max-width: none;
+}
+
+#commentCanvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 5;
+  display: block;
+  pointer-events: auto;
+  touch-action: pan-x pan-y pinch-zoom;
+}
+
+.point {
+  position: absolute;
+  z-index: 10;
+  min-width: 22px;
+  padding: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  white-space: nowrap;
+  font-size: 30px;
+  font-weight: bold;
+  line-height: 1;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+
+.point.selected {
+  background: rgba(255, 235, 59, 0.38);
+  text-decoration: underline;
+}
+
+/* ---------------------- Popup and modal --------------------- */
+
+.popupMenu {
+  position: fixed;
+  z-index: 3000;
+  min-width: 180px;
+  padding: 5px;
+  border: 1px solid #aeb1b6;
+  border-radius: 8px;
+  background: white;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
+}
+
+.popupMenu button {
+  display: block;
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 5px;
+  background: white;
+  text-align: left;
+}
+
+.popupMenu button:hover {
+  background: #eef0f3;
+}
+
+.dangerText {
+  color: var(--danger);
+}
+
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 4000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(0, 0, 0, 0.38);
+}
+
+.modalCard {
+  width: min(410px, 96vw);
+  max-height: 92vh;
+  overflow: auto;
+  padding: 18px;
+  border-radius: 12px;
+  background: white;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.25);
+}
+
+.modalCard h2 {
+  margin: 0 0 15px;
+}
+
+.modalCard label {
+  display: block;
+  margin: 12px 0;
+  font-weight: bold;
+}
+
+.modalCard input {
+  width: 100%;
+  min-height: 42px;
+  margin-top: 5px;
+  padding: 8px;
+  border: 1px solid #9fa3a8;
+  border-radius: 7px;
+}
+
+.fieldRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.modalActions {
+  display: flex;
+  gap: 9px;
+  margin-top: 18px;
+}
+
+.modalActions button {
+  flex: 1;
+  min-height: 42px;
+  border: 1px solid #96999e;
+  border-radius: 7px;
+}
+
+.measurementCard {
+  width: min(540px, 97vw);
+  padding: 20px;
+}
+
+.measurementCard h2 {
+  margin-bottom: 12px;
+  text-align: center;
+}
+
+#measurementDisplay {
+  width: 100%;
+  min-height: 70px;
+  padding: 10px 14px;
+  border: 2px solid #8d9299;
+  border-radius: 10px;
+  background: #fbfbfc;
+  color: #111;
+  font-size: 42px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-align: center;
+  caret-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.measurementKeypad {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(78px, 1fr);
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.numberPad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 9px;
+}
+
+.operatorPad {
+  display: grid;
+  grid-template-rows: repeat(4, 1fr);
+  gap: 9px;
+}
+
+.measurementKeypad button {
+  min-height: 64px;
+  border: 1px solid #999ea5;
+  border-radius: 10px;
+  background: #f6f7f8;
+  color: #1e1f21;
+  font-size: 27px;
+  font-weight: 600;
+  touch-action: manipulation;
+}
+
+.measurementKeypad button:active {
+  transform: scale(0.97);
+  background: #dfe3e8;
+}
+
+.operatorButton {
+  min-width: 78px;
+}
+
+.clearButton {
+  font-size: 24px !important;
+}
+
+.spaceButton {
+  grid-column: 1 / -1;
+  min-height: 58px !important;
+  font-size: 20px !important;
+  letter-spacing: 2px;
+}
+
+.measurementActions {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.measurementActions button {
+  min-height: 58px;
+  font-size: 20px;
+}
+
+.confirmMeasurementButton {
+  border-color: #18823a !important;
+  background: #1f9445 !important;
+  color: white !important;
+}
+
+.measurementHint {
+  margin: 12px 3px 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+/*
+  While a measurement point is being moved, page scrolling and browser
+  panning are temporarily disabled so the drawing stays fixed.
+*/
+#drawingWrapper.pointDragActive {
+  overflow: hidden !important;
+  touch-action: none !important;
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: auto;
+}
+
+#drawingWrapper.pointDragActive #drawingArea,
+#drawingWrapper.pointDragActive .point {
+  touch-action: none !important;
+}
+
+.point.movingPoint {
+  background: rgba(255, 235, 59, 0.48);
+  outline: 2px solid rgba(70, 70, 70, 0.7);
+  border-radius: 4px;
+}
+
+.sideButtons {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.sideButtons button {
+  min-height: 52px;
+  border: 1px solid #979ba0;
+  border-radius: 8px;
+  background: #f7f7f7;
+  font-size: 19px;
+  font-weight: bold;
+}
+
+/* ------------------------- Responsive ----------------------- */
+
+@media (max-width: 800px) {
+  #homeView {
+    padding: 14px;
+  }
+
+  .homeHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .homeTools {
+    flex-direction: column;
+  }
+
+  .libraryGrid {
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  }
+
+  #toolbar {
+    max-height: 122px;
+    overflow-y: auto;
+  }
+
+  #drawingWrapper {
+    height: calc(100vh - 122px);
+  }
+
+  .point {
+    font-size: 28px;
+  }
+}
+
+
+@media (max-width: 620px) {
+  .measurementCard {
+    width: 98vw;
+    padding: 14px;
+  }
+
+  #measurementDisplay {
+    min-height: 62px;
+    font-size: 35px;
+  }
+
+  .measurementKeypad {
+    grid-template-columns: minmax(0, 3fr) 74px;
+    gap: 7px;
+  }
+
+  .numberPad,
+  .operatorPad {
+    gap: 7px;
+  }
+
+  .measurementKeypad button {
+    min-height: 56px;
+    font-size: 23px;
+  }
+
+  .operatorButton {
+    min-width: 70px;
+  }
+}
+
+
+/* ---------------------- Folder Library ---------------------- */
+
+.libraryHeaderActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.secondaryButton {
+  color: var(--text);
+  background: white;
+  border-color: var(--border);
+}
+
+.libraryNavigation {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 1400px;
+  margin: 0 auto 12px;
+}
+
+.folderBreadcrumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-height: 36px;
+}
+
+.folderBreadcrumb button {
+  padding: 5px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.folderBreadcrumb button:hover {
+  background: #e8edf7;
+}
+
+.libraryGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(245px, 1fr));
+  gap: 16px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.libraryCard {
+  position: relative;
+  min-height: 210px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.libraryCard:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 7px 18px rgba(0, 0, 0, 0.1);
+}
+
+.folderCard {
+  min-height: 185px;
+}
+
+.folderPreview {
+  background: #fff4ce;
+  font-size: 54px;
+}
+
+@media (max-width: 700px) {
+  .homeHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .libraryHeaderActions {
+    width: 100%;
+  }
+
+  .libraryHeaderActions button {
+    flex: 1;
+  }
+}
+
+
+/* ---------------------- Version 5 Save System ---------------------- */
+
+.saveButton {
+  border-color: #1769aa !important;
+  background: #eaf4ff !important;
+  color: #0f4f82 !important;
+  font-weight: 700;
+}
+
+.saveButton:active {
+  background: #cfe8ff !important;
+}
+
+.saveIndicator {
+  min-width: 92px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  text-align: center;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.saveIndicator[data-save-state="saved"] {
+  background: #e6f7eb;
+  color: #176d35;
+}
+
+.saveIndicator[data-save-state="unsaved"] {
+  background: #fff1d6;
+  color: #8a5700;
+}
+
+.saveIndicator[data-save-state="saving"] {
+  background: #e7efff;
+  color: #24568f;
+}
+
+.saveIndicator[data-save-state="failed"] {
+  background: #ffe5e5;
+  color: #a31818;
+}
+
+.saveIndicator.unsaved::before {
+  content: "";
+}
+
+.saveIndicator.saveFailed {
+  border: 1px solid #d76666;
+}
+
+
+/* ---------------------- Version 5.1 UI fixes ---------------------- */
+
+.denominator16Button {
+  grid-column: 1 / -1;
+}
+
+.zoomDisplay {
+  min-width: 52px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: #eef1f4;
+  color: #40454b;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+#zoomInBtn,
+#zoomOutBtn {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+
+/* ---------------------- Version 6 Measurement Keyboard ---------------------- */
+
+.v6Keypad {
+  display: block;
+  margin-top: 14px;
+}
+
+.v6MainGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.v6MainGrid button {
+  min-height: 66px;
+  border: 1px solid #999ea5;
+  border-radius: 10px;
+  background: #f6f7f8;
+  color: #1e1f21;
+  font-size: 28px;
+  font-weight: 650;
+  touch-action: manipulation;
+}
+
+.v6MainGrid button:active {
+  transform: scale(0.97);
+  background: #dfe3e8;
+}
+
+.v6MainGrid .fractionButton {
+  background: #eef4fb;
+  border-color: #9db1c6;
+}
+
+.v6MainGrid .operatorButton {
+  background: #f1f2f4;
+}
+
+.v6Keypad .spaceButton {
+  width: 100%;
+  min-height: 60px !important;
+  margin-top: 10px;
+  border: 1px solid #7ba7d5;
+  border-radius: 10px;
+  background: #dceeff;
+  color: #124b7a;
+  font-size: 20px !important;
+  font-weight: 750;
+  letter-spacing: 2px;
+}
+
+.v6Keypad .measurementActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.v6Keypad .measurementActions button {
+  min-height: 58px;
+  border-radius: 10px;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.v6Keypad #cancelMeasurementBtn {
+  background: #f1f2f4;
+  color: #333;
+}
+
+.v6Keypad .confirmMeasurementButton {
+  border-color: #18823a !important;
+  background: #1f9445 !important;
+  color: white !important;
+}
+
+@media (max-width: 620px) {
+  .v6MainGrid {
+    gap: 7px;
+  }
+
+  .v6MainGrid button {
+    min-height: 58px;
+    font-size: 24px;
+  }
+
+  .v6Keypad .spaceButton {
+    min-height: 54px !important;
+  }
+}
+
+/* ---------- Backup and restore ---------- */
+
+.dangerButton {
+  color: white;
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
+.restoreSummary {
+  margin: 0 0 10px;
+  font-weight: bold;
+}
+
+.restoreWarning {
+  margin: 0 0 4px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.fullWidthButton {
+  width: 100%;
+  min-height: 42px;
+  margin-top: 12px;
+  border: 1px solid #96999e;
+  border-radius: 7px;
+  background: white;
+  color: var(--text);
+}
