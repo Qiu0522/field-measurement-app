@@ -262,8 +262,6 @@ const Workspace = (() => {
       });
     });
 
-    });
-
     els.measurementModal
       .querySelector('[data-action="backspace"]')
       .addEventListener("click", measurementBackspace);
@@ -1410,40 +1408,137 @@ const Workspace = (() => {
         ? fileNameInput
         : fileNameInput + ".pdf";
 
-    const oldTransform = els.drawingArea.style.transform;
-    els.drawingArea.style.transform = "scale(1)";
+    /*
+      The old exporter used html2canvas at scale 4 on a PDF that was already
+      rendered at high resolution. On iPad this can exceed Safari's canvas
+      memory/pixel limit and produce a completely blank PDF.
 
+      This exporter builds one controlled-size canvas directly from:
+      1. the rendered PDF/image,
+      2. pen comments,
+      3. measurement text.
+
+      It does not screenshot the webpage and is not affected by zoom.
+    */
     try {
+      const sourceWidth =
+        project?.kind === "pdf"
+          ? els.pdfCanvas.width
+          : Number(project?.blankWidth || els.drawingArea.offsetWidth);
+
+      const sourceHeight =
+        project?.kind === "pdf"
+          ? els.pdfCanvas.height
+          : Number(project?.blankHeight || els.drawingArea.offsetHeight);
+
+      if (!sourceWidth || !sourceHeight) {
+        throw new Error("Drawing dimensions are unavailable.");
+      }
+
+      /*
+        Conservative limits for older iPads.
+        Keep output under roughly 12 million pixels and 8192 px per side.
+      */
+      const maxPixels = 12_000_000;
+      const maxDimension = 8192;
+
+      const areaScale = Math.sqrt(maxPixels / (sourceWidth * sourceHeight));
+      const dimensionScale = Math.min(
+        maxDimension / sourceWidth,
+        maxDimension / sourceHeight
+      );
+
+      const exportScale = Math.min(1, areaScale, dimensionScale);
+
+      const exportWidth = Math.max(1, Math.round(sourceWidth * exportScale));
+      const exportHeight = Math.max(1, Math.round(sourceHeight * exportScale));
+
+      const exportCanvas = document.createElement("canvas");
+      exportCanvas.width = exportWidth;
+      exportCanvas.height = exportHeight;
+
+      const context = exportCanvas.getContext("2d", {
+        alpha: false
+      });
+
+      context.fillStyle = "#ffffff";
+      context.fillRect(0, 0, exportWidth, exportHeight);
+      context.save();
+      context.scale(exportScale, exportScale);
+
+      if (project?.kind === "pdf") {
+        context.drawImage(els.pdfCanvas, 0, 0);
+      } else if (
+        els.drawingImage &&
+        !els.drawingImage.classList.contains("hidden") &&
+        els.drawingImage.complete
+      ) {
+        context.drawImage(
+          els.drawingImage,
+          0,
+          0,
+          sourceWidth,
+          sourceHeight
+        );
+      }
+
+      if (els.commentCanvas.width && els.commentCanvas.height) {
+        context.drawImage(els.commentCanvas, 0, 0);
+      }
+
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      context.font = "bold 30px Arial, sans-serif";
+
+      points.forEach(point => {
+        const dataType = getDataType(point.dataId);
+        if (dataType?.export === false) return;
+
+        const measurement = point.measurement || String(point.number);
+
+        const label =
+          showOrderLabels && point.assignedSide && point.assignedSeq
+            ? `${point.assignedSide}${point.assignedSeq} ${measurement}`
+            : measurement;
+
+        context.fillStyle = dataType?.color || "#000000";
+        context.fillText(label, point.x, point.y);
+      });
+
+      context.restore();
+
       await html2pdf()
         .set({
           margin: 0,
           filename: fileName,
           image: {
             type: "jpeg",
-            quality: 1
-          },
-          html2canvas: {
-            scale: 4,
-            useCORS: true,
-            backgroundColor: "#ffffff"
+            quality: 0.98
           },
           jsPDF: {
             unit: "px",
-            format: [
-              els.drawingArea.offsetWidth,
-              els.drawingArea.offsetHeight
-            ],
+            format: [exportWidth, exportHeight],
             orientation:
-              els.drawingArea.offsetWidth >
-              els.drawingArea.offsetHeight
+              exportWidth > exportHeight
                 ? "landscape"
-                : "portrait"
+                : "portrait",
+            compress: true
           }
         })
-        .from(els.drawingArea)
+        .from(exportCanvas)
         .save();
-    } finally {
-      els.drawingArea.style.transform = oldTransform;
+
+      setStatus(
+        exportScale < 1
+          ? `PDF exported at ${Math.round(exportScale * 100)}% resolution for iPad compatibility.`
+          : "PDF exported."
+      );
+    } catch (error) {
+      console.error("PDF export failed:", error);
+      alert(
+        "PDF export failed.\n\n" +
+        (error?.message || String(error))
+      );
     }
   }
 
