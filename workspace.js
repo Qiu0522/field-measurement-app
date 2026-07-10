@@ -33,8 +33,10 @@ const Workspace = (() => {
   let isDrawingComment = false;
   let lastCommentX = 0;
   let lastCommentY = 0;
+  let lastCommentPressure = 0.5;
   let commentBeforeStroke = "";
   let commentImageData = "";
+  let commentFingerPan = null;
 
   let measurementCallback = null;
   let measurementRawValue = "";
@@ -584,6 +586,7 @@ const Workspace = (() => {
     if (pointMode === "lock") els.lockBtn.classList.add("activeTool");
     if (commentTool === "pen") els.penBtn.classList.add("activeTool");
     if (commentTool === "eraser") els.eraserBtn.classList.add("activeTool");
+    els.commentCanvas.classList.toggle("inkActive", commentTool !== "none");
   }
 
   function updateLabelsButton() {
@@ -1514,6 +1517,21 @@ const Workspace = (() => {
   function bindCommentCanvas() {
     els.commentCanvas.addEventListener("pointerdown", event => {
       if (commentTool === "none") return;
+
+      // In ink mode a finger pans the drawing, while Pencil only writes.
+      if (event.pointerType === "touch") {
+        event.preventDefault();
+        commentFingerPan = {
+          pointerId: event.pointerId,
+          x: event.clientX,
+          y: event.clientY,
+          left: els.drawingWrapper.scrollLeft,
+          top: els.drawingWrapper.scrollTop
+        };
+        try { els.commentCanvas.setPointerCapture(event.pointerId); } catch (_) {}
+        return;
+      }
+
       if (!["pen", "mouse"].includes(event.pointerType)) return;
 
       event.preventDefault();
@@ -1522,46 +1540,85 @@ const Workspace = (() => {
         els.commentCanvas.setPointerCapture(event.pointerId);
       } catch (_) {}
 
-      commentBeforeStroke = els.commentCanvas.toDataURL();
+      // Reuse the already-saved previous image instead of encoding the huge
+      // canvas when Pencil first touches the screen.
+      commentBeforeStroke = commentImageData;
       isDrawingComment = true;
 
       const position = getCanvasPosition(event);
       lastCommentX = position.x;
       lastCommentY = position.y;
+      lastCommentPressure = normalisePressure(event);
     });
 
     els.commentCanvas.addEventListener("pointermove", event => {
+      if (commentFingerPan && event.pointerId === commentFingerPan.pointerId) {
+        event.preventDefault();
+        els.drawingWrapper.scrollLeft =
+          commentFingerPan.left - (event.clientX - commentFingerPan.x);
+        els.drawingWrapper.scrollTop =
+          commentFingerPan.top - (event.clientY - commentFingerPan.y);
+        return;
+      }
+
       if (!isDrawingComment || commentTool === "none") return;
       if (!["pen", "mouse"].includes(event.pointerType)) return;
 
       event.preventDefault();
-
-      const position = getCanvasPosition(event);
       const context = els.commentCanvas.getContext("2d");
-
       context.lineCap = "round";
       context.lineJoin = "round";
 
-      if (commentTool === "eraser") {
-        context.globalCompositeOperation = "destination-out";
-        context.lineWidth = 36;
-      } else {
-        context.globalCompositeOperation = "source-over";
-        context.strokeStyle = "#ff0000";
-        context.lineWidth = 5;
-      }
+      const samples = typeof event.getCoalescedEvents === "function"
+        ? event.getCoalescedEvents()
+        : [event];
 
-      context.beginPath();
-      context.moveTo(lastCommentX, lastCommentY);
-      context.lineTo(position.x, position.y);
-      context.stroke();
+      samples.forEach(sample => {
+        const position = getCanvasPosition(sample);
+        const pressure = normalisePressure(sample);
+        const midX = (lastCommentX + position.x) / 2;
+        const midY = (lastCommentY + position.y) / 2;
 
-      lastCommentX = position.x;
-      lastCommentY = position.y;
+        if (commentTool === "eraser") {
+          context.globalCompositeOperation = "destination-out";
+          context.lineWidth = 36;
+        } else {
+          context.globalCompositeOperation = "source-over";
+          context.strokeStyle = "#ff0000";
+          context.lineWidth = 5 * (0.82 + ((lastCommentPressure + pressure) / 2) * 0.36);
+        }
+
+        context.beginPath();
+        context.moveTo(lastCommentX, lastCommentY);
+        context.quadraticCurveTo(lastCommentX, lastCommentY, midX, midY);
+        context.lineTo(position.x, position.y);
+        context.stroke();
+
+        lastCommentX = position.x;
+        lastCommentY = position.y;
+        lastCommentPressure = pressure;
+      });
     });
 
-    els.commentCanvas.addEventListener("pointerup", finishStroke);
-    els.commentCanvas.addEventListener("pointercancel", finishStroke);
+    els.commentCanvas.addEventListener("pointerup", event => {
+      if (commentFingerPan && event.pointerId === commentFingerPan.pointerId) {
+        commentFingerPan = null;
+        return;
+      }
+      finishStroke();
+    });
+    els.commentCanvas.addEventListener("pointercancel", event => {
+      if (commentFingerPan && event.pointerId === commentFingerPan.pointerId) {
+        commentFingerPan = null;
+        return;
+      }
+      finishStroke();
+    });
+  }
+
+  function normalisePressure(event) {
+    const pressure = Number(event.pressure);
+    return pressure > 0 ? Math.max(0.05, Math.min(1, pressure)) : 0.5;
   }
 
   function finishStroke() {

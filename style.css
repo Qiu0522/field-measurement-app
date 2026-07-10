@@ -313,6 +313,12 @@ button {
   touch-action: pan-x pan-y;
 }
 
+#commentCanvas.inkActive {
+  /* Pencil events stay with the canvas; finger panning is handled in JS. */
+  touch-action: none;
+  cursor: crosshair;
+}
+
 .point {
   position: absolute;
   z-index: 10;
