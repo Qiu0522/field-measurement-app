@@ -204,6 +204,8 @@ button {
 }
 
 #toolbar {
+  flex: 0 0 auto;
+  touch-action: manipulation;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -281,7 +283,8 @@ button {
   height: calc(100vh - 88px);
   overflow: auto;
   background: #dedfe2;
-  touch-action: pan-x pan-y pinch-zoom;
+  touch-action: pan-x pan-y;
+  overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -307,7 +310,7 @@ button {
   z-index: 5;
   display: block;
   pointer-events: auto;
-  touch-action: pan-x pan-y pinch-zoom;
+  touch-action: pan-x pan-y;
 }
 
 .point {
