@@ -917,22 +917,35 @@ const Workspace = (() => {
   function assignContextPointSide(side) {
     if (!contextPoint) return;
 
+    const dataId = contextPoint.dataId;
+    const before = snapshotOrder(dataId);
     const oldSide = contextPoint.assignedSide || "";
 
     contextPoint.assignedSide = side;
+
+    /*
+      Assigning a side is a geometric correction. Return to automatic mode so
+      the moved point is inserted according to its position on the new edge,
+      and both the old and new sides are renumbered without duplicates.
+    */
+    const dataType = getDataType(dataId);
+    if (dataType) {
+      dataType.manual = false;
+      dataType.ordered = true;
+    }
+
+    recalculateDataTypeOrder(dataId);
+    const after = snapshotOrder(dataId);
 
     pushUndo({
       type: "assignSide",
       point: contextPoint,
       oldSide,
       newSide: side,
-      dataId: contextPoint.dataId
+      dataId,
+      before,
+      after
     });
-
-    const dataType = getDataType(contextPoint.dataId);
-    if (dataType) dataType.ordered = true;
-
-    recalculateDataTypeOrder(contextPoint.dataId);
 
     showOrderLabels = true;
     updateLabelsButton();
@@ -1676,9 +1689,15 @@ const Workspace = (() => {
     }
 
     if (action.type === "assignSide") {
-      action.point.assignedSide = action.oldSide;
-      recalculateDataTypeOrder(action.dataId);
-      renderDataSelect(action.dataId);
+      if (action.before) {
+        restoreOrder(action.dataId, action.before);
+      } else {
+        action.point.assignedSide = action.oldSide;
+        const dataType = getDataType(action.dataId);
+        if (dataType) dataType.manual = false;
+        recalculateDataTypeOrder(action.dataId);
+        renderDataSelect(action.dataId);
+      }
     }
 
     if (action.type === "reorder") {
@@ -1734,9 +1753,15 @@ const Workspace = (() => {
     }
 
     if (action.type === "assignSide") {
-      action.point.assignedSide = action.newSide;
-      recalculateDataTypeOrder(action.dataId);
-      renderDataSelect(action.dataId);
+      if (action.after) {
+        restoreOrder(action.dataId, action.after);
+      } else {
+        action.point.assignedSide = action.newSide;
+        const dataType = getDataType(action.dataId);
+        if (dataType) dataType.manual = false;
+        recalculateDataTypeOrder(action.dataId);
+        renderDataSelect(action.dataId);
+      }
     }
 
     if (action.type === "reorder") {
