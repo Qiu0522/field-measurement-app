@@ -706,21 +706,36 @@
     function contextAssignSide() {
       contextMenu.style.display = "none";
       if (!contextPoint) return;
-
-      const side = prompt("Assign side: N, E, S, or W", contextPoint.manualSide || contextPoint.previewSide || "");
-
+    
+      const side = prompt("Assign side: N, E, S, or W", contextPoint.manualSide || "");
+    
       if (!side) return;
-
+    
       const cleanSide = side.trim().toUpperCase();
-
+    
       if (!["N", "E", "S", "W"].includes(cleanSide)) {
         alert("Please enter only N, E, S, or W.");
         return;
       }
-
+    
       contextPoint.manualSide = cleanSide;
-      contextPoint.previewSide = cleanSide;
-      updatePointElement(contextPoint);
+    
+      points
+        .filter(p => p.dataId === contextPoint.dataId)
+        .forEach(p => {
+          p.previewSide = "";
+          p.previewSeq = "";
+        });
+    
+      const ordered = getOrderedPointsForData(contextPoint.dataId, exportDirection);
+    
+      ordered.forEach(item => {
+        item.point.previewSide = item.side;
+        item.point.previewSeq = item.seq;
+        updatePointElement(item.point);
+      });
+    
+      statusText.textContent = "Side reassigned and sequence recalculated.";
       autoSave();
     }
 
@@ -1008,7 +1023,7 @@
 
     function buildOrderedList(groups, sideOrder) {
       const result = [];
-
+    
       sideOrder.forEach(side => {
         groups[side].forEach((point, index) => {
           result.push({
@@ -1018,7 +1033,7 @@
           });
         });
       });
-
+    
       return result;
     }
 
