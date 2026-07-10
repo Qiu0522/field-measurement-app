@@ -77,6 +77,7 @@
         <button id="addBtn" class="toolbarButton" type="button">＋ Point</button>
         <button id="lockBtn" class="toolbarButton" type="button">🔒 Lock</button>
         <button id="orderBtn" class="toolbarButton" type="button">↕ Order</button>
+        <button id="batchAssignBtn" class="toolbarButton" type="button">☑ Batch Side</button>
         <button id="labelsBtn" class="toolbarButton" type="button"># Labels</button>
         <button id="manualSaveBtn" class="toolbarButton saveButton" type="button">💾 Save</button>
       </div>
@@ -128,6 +129,16 @@
     <div id="reorderBar" class="reorderBar hidden">
       <span id="reorderBarText"></span>
       <button id="reorderCancelBtn" type="button">Cancel</button>
+    </div>
+
+    <div id="batchAssignBar" class="batchAssignBar hidden">
+      <strong id="batchAssignText">Batch Side: 0 selected</strong>
+      <button type="button" data-batch-side="N">N</button>
+      <button type="button" data-batch-side="E">E</button>
+      <button type="button" data-batch-side="S">S</button>
+      <button type="button" data-batch-side="W">W</button>
+      <button id="batchAutoBtn" type="button">Reset Auto</button>
+      <button id="batchCancelBtn" type="button">Cancel</button>
     </div>
 
     <div id="drawingWrapper">

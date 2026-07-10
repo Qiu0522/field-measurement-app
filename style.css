@@ -370,6 +370,33 @@ button {
   background: #f6f7f8;
 }
 
+.batchAssignBar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 52px;
+  padding: 5px 10px;
+  border-bottom: 1px solid #8db0ef;
+  background: #eaf2ff;
+}
+
+.batchAssignBar button {
+  min-width: 44px;
+  min-height: 40px;
+  border: 1px solid #7795c8;
+  border-radius: 8px;
+  background: white;
+  font-weight: bold;
+}
+
+.point.batchSelected {
+  padding: 3px 5px;
+  border-radius: 6px;
+  outline: 3px solid #276ef1;
+  background: rgba(39,110,241,.18);
+}
+
 .saveIndicator {
   padding: 3px 7px;
   border-radius: 12px;

@@ -24,6 +24,8 @@ const Workspace = (() => {
   let movingPoint = null;
 
   let tapReorderState = null;
+  let batchAssignMode = false;
+  let batchAssignPoints = new Set();
 
   let isDraggingPoint = false;
   let draggedPoint = null;
@@ -75,6 +77,7 @@ const Workspace = (() => {
     els.zoomInBtn = document.getElementById("zoomInBtn");
     els.zoomDisplay = document.getElementById("zoomDisplay");
     els.orderBtn = document.getElementById("orderBtn");
+    els.batchAssignBtn = document.getElementById("batchAssignBtn");
     els.labelsBtn = document.getElementById("labelsBtn");
     els.exportCsvBtn = document.getElementById("exportCsvBtn");
     els.exportPdfBtn = document.getElementById("exportPdfBtn");
@@ -100,6 +103,11 @@ const Workspace = (() => {
     els.reorderBar = document.getElementById("reorderBar");
     els.reorderBarText = document.getElementById("reorderBarText");
     els.reorderCancelBtn = document.getElementById("reorderCancelBtn");
+    els.batchAssignBar = document.getElementById("batchAssignBar");
+    els.batchAssignText = document.getElementById("batchAssignText");
+    els.batchAutoBtn = document.getElementById("batchAutoBtn");
+    els.batchCancelBtn = document.getElementById("batchCancelBtn");
+    els.batchSideButtons = Array.from(document.querySelectorAll("[data-batch-side]"));
 
     els.measurementModal = document.getElementById("measurementModal");
     els.measurementTitle = document.getElementById("measurementTitle");
@@ -197,6 +205,12 @@ const Workspace = (() => {
     els.redoBtn.addEventListener("click", redo);
 
     els.orderBtn.addEventListener("click", orderCurrentData);
+    els.batchAssignBtn.addEventListener("click", startBatchAssign);
+    els.batchSideButtons.forEach(button => {
+      button.addEventListener("click", () => applyBatchSide(button.dataset.batchSide));
+    });
+    els.batchAutoBtn.addEventListener("click", resetBatchToAuto);
+    els.batchCancelBtn.addEventListener("click", cancelBatchAssign);
     els.labelsBtn.addEventListener("click", toggleOrderLabels);
 
     els.exportCsvBtn.addEventListener("click", exportCSV);
@@ -703,6 +717,11 @@ const Workspace = (() => {
     element.addEventListener("click", event => {
       event.stopPropagation();
 
+      if (batchAssignMode) {
+        toggleBatchPoint(point);
+        return;
+      }
+
       if (tapReorderState) {
         handleTapReorderPoint(point);
         return;
@@ -715,14 +734,14 @@ const Workspace = (() => {
     element.addEventListener("contextmenu", event => {
       event.preventDefault();
       event.stopPropagation();
-      if (tapReorderState) return;
+      if (tapReorderState || batchAssignMode) return;
       showPointContextMenu(event.clientX, event.clientY, point);
     });
 
     let timer = null;
 
     element.addEventListener("touchstart", event => {
-      if (tapReorderState) return;
+      if (tapReorderState || batchAssignMode) return;
       timer = setTimeout(() => {
         const touch = event.touches[0];
         showPointContextMenu(touch.clientX, touch.clientY, point);
@@ -947,6 +966,106 @@ const Workspace = (() => {
     els.pointContextMenu.classList.add("hidden");
   }
 
+  function startBatchAssign() {
+    if (commentTool !== "none") toggleCommentTool(commentTool);
+    batchAssignMode = true;
+    batchAssignPoints.clear();
+    els.batchAssignBtn.classList.add("activeTool");
+    els.batchAssignBar.classList.remove("hidden");
+    updateBatchAssignBar();
+    setStatus("Batch Side: tap points, then choose N, E, S, W, or Reset Auto.");
+  }
+
+  function toggleBatchPoint(point) {
+    const currentDataId = els.dataSelect.value;
+    if (point.dataId !== currentDataId) {
+      setStatus("Batch Side only selects points from the current Data type.");
+      return;
+    }
+
+    if (batchAssignPoints.has(point)) {
+      batchAssignPoints.delete(point);
+    } else {
+      batchAssignPoints.add(point);
+    }
+
+    const element = findPointElement(point.uid);
+    if (element) element.classList.toggle("batchSelected", batchAssignPoints.has(point));
+    updateBatchAssignBar();
+  }
+
+  function updateBatchAssignBar() {
+    els.batchAssignText.textContent =
+      `Batch Side: ${batchAssignPoints.size} selected`;
+    const disabled = batchAssignPoints.size === 0;
+    els.batchSideButtons.forEach(button => { button.disabled = disabled; });
+    els.batchAutoBtn.disabled = disabled;
+  }
+
+  function applyBatchSide(side) {
+    if (!batchAssignPoints.size) return;
+    const dataId = els.dataSelect.value;
+    const before = snapshotOrder(dataId);
+    const dataType = getDataType(dataId);
+
+    batchAssignPoints.forEach(point => {
+      point.assignedSide = side;
+      point.sideLocked = true;
+    });
+
+    if (dataType) {
+      dataType.manual = false;
+      dataType.ordered = true;
+    }
+    recalculateDataTypeOrder(dataId);
+    const after = snapshotOrder(dataId);
+    pushUndo({ type: "reorder", dataId, before, after });
+    finishBatchAssign(`${batchAssignPoints.size} points assigned to ${side}.`);
+    scheduleAutoSave();
+  }
+
+  function resetBatchToAuto() {
+    if (!batchAssignPoints.size) return;
+    const dataId = els.dataSelect.value;
+    const before = snapshotOrder(dataId);
+    const dataType = getDataType(dataId);
+    const typePoints = points.filter(point => point.dataId === dataId);
+    const bounds = getBounds(typePoints);
+
+    batchAssignPoints.forEach(point => {
+      point.sideLocked = false;
+      point.assignedSide = guessSide(point, bounds);
+    });
+
+    if (dataType) {
+      dataType.manual = false;
+      dataType.ordered = true;
+    }
+    recalculateDataTypeOrder(dataId);
+    const after = snapshotOrder(dataId);
+    pushUndo({ type: "reorder", dataId, before, after });
+    finishBatchAssign(`${batchAssignPoints.size} points reset to Auto.`);
+    scheduleAutoSave();
+  }
+
+  function finishBatchAssign(message) {
+    batchAssignMode = false;
+    batchAssignPoints.clear();
+    els.batchAssignBtn.classList.remove("activeTool");
+    els.batchAssignBar.classList.add("hidden");
+    showOrderLabels = true;
+    updateLabelsButton();
+    refreshAllPoints();
+    renderDataSelect(els.dataSelect.value);
+    setStatus(message);
+  }
+
+  function cancelBatchAssign() {
+    document.querySelectorAll(".point.batchSelected")
+      .forEach(element => element.classList.remove("batchSelected"));
+    finishBatchAssign("Batch Side cancelled.");
+  }
+
   function assignContextPointSide(side) {
     if (!contextPoint) return;
 
@@ -955,6 +1074,7 @@ const Workspace = (() => {
     const oldSide = contextPoint.assignedSide || "";
 
     contextPoint.assignedSide = side;
+    contextPoint.sideLocked = true;
 
     /*
       Assigning a side is a geometric correction. Return to automatic mode so
@@ -1032,7 +1152,9 @@ const Workspace = (() => {
     const bounds = getBounds(typePoints);
 
     typePoints.forEach(point => {
-      if (!point.assignedSide) {
+      // Explicit user assignments are protected. Auto points are rechecked
+      // whenever Order Current Data is run.
+      if (!point.sideLocked) {
         point.assignedSide = guessSide(point, bounds);
       }
     });
@@ -1186,7 +1308,8 @@ const Workspace = (() => {
         .map(p => ({
           uid: p.uid,
           manualSeq: p.manualSeq,
-          assignedSide: p.assignedSide
+          assignedSide: p.assignedSide,
+          sideLocked: !!p.sideLocked
         }))
     };
   }
@@ -1211,6 +1334,7 @@ const Workspace = (() => {
         if (entry) {
           p.manualSeq = entry.manualSeq;
           p.assignedSide = entry.assignedSide;
+          p.sideLocked = !!entry.sideLocked;
         }
       });
 
@@ -1631,39 +1755,49 @@ const Workspace = (() => {
         ? event.getCoalescedEvents()
         : [event];
 
-      samples.forEach(sample => {
-        const position = getCanvasPosition(sample);
-        const pressure = normalisePressure(sample);
+      if (!samples.length) return;
+
+      const positions = samples.map(sample => ({
+        ...getCanvasPosition(sample),
+        pressure: normalisePressure(sample)
+      }));
+      const averagePressure = positions.reduce(
+        (sum, item) => sum + item.pressure,
+        lastCommentPressure
+      ) / (positions.length + 1);
+
+      context.globalAlpha = 1;
+      if (commentTool === "eraser") {
+        context.globalCompositeOperation = "destination-out";
+        context.lineWidth = 36;
+      } else if (commentTool === "highlighter") {
+        // Draw behind all existing ink on the annotation canvas, while the
+        // whole annotation canvas still remains above the PDF drawing.
+        context.globalCompositeOperation = "destination-over";
+        context.globalAlpha = 0.14;
+        context.strokeStyle = brushColor;
+        context.lineWidth = brushWidth * 4;
+      } else {
+        context.globalCompositeOperation = "source-over";
+        context.strokeStyle = brushColor;
+        context.lineWidth = brushWidth * (0.82 + averagePressure * 0.36);
+      }
+
+      // Draw all coalesced Pencil samples in one path and one stroke call.
+      // The previous version issued a full Canvas stroke for every sample.
+      context.beginPath();
+      context.moveTo(lastCommentX, lastCommentY);
+      positions.forEach(position => {
         const midX = (lastCommentX + position.x) / 2;
         const midY = (lastCommentY + position.y) / 2;
-
-        context.globalAlpha = 1;
-
-        if (commentTool === "eraser") {
-          context.globalCompositeOperation = "destination-out";
-          context.lineWidth = 36;
-        } else if (commentTool === "highlighter") {
-          context.globalCompositeOperation = "source-over";
-          context.globalAlpha = 0.14;
-          context.strokeStyle = brushColor;
-          context.lineWidth = brushWidth * 4;
-        } else {
-          context.globalCompositeOperation = "source-over";
-          context.strokeStyle = brushColor;
-          context.lineWidth = brushWidth * (0.82 + ((lastCommentPressure + pressure) / 2) * 0.36);
-        }
-
-        context.beginPath();
-        context.moveTo(lastCommentX, lastCommentY);
         context.quadraticCurveTo(lastCommentX, lastCommentY, midX, midY);
-        context.lineTo(position.x, position.y);
-        context.stroke();
-        context.globalAlpha = 1;
-
         lastCommentX = position.x;
         lastCommentY = position.y;
-        lastCommentPressure = pressure;
+        lastCommentPressure = position.pressure;
       });
+      context.lineTo(lastCommentX, lastCommentY);
+      context.stroke();
+      context.globalAlpha = 1;
     });
 
     els.commentCanvas.addEventListener("pointerup", event => {
