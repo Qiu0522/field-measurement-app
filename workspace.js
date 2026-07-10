@@ -21,6 +21,8 @@ const Workspace = (() => {
   let contextPoint = null;
   let movingPoint = null;
 
+  let tapReorderState = null;
+
   let isDraggingPoint = false;
   let draggedPoint = null;
   let dragStartX = 0;
@@ -84,7 +86,14 @@ const Workspace = (() => {
     els.pointEditAction = document.getElementById("pointEditAction");
     els.pointMoveAction = document.getElementById("pointMoveAction");
     els.pointAssignSideAction = document.getElementById("pointAssignSideAction");
+    els.pointMoveUpAction = document.getElementById("pointMoveUpAction");
+    els.pointMoveDownAction = document.getElementById("pointMoveDownAction");
+    els.pointReorderSideAction = document.getElementById("pointReorderSideAction");
     els.pointDeleteAction = document.getElementById("pointDeleteAction");
+
+    els.reorderBar = document.getElementById("reorderBar");
+    els.reorderBarText = document.getElementById("reorderBarText");
+    els.reorderCancelBtn = document.getElementById("reorderCancelBtn");
 
     els.measurementModal = document.getElementById("measurementModal");
     els.measurementTitle = document.getElementById("measurementTitle");
@@ -251,6 +260,23 @@ const Workspace = (() => {
       hidePointContextMenu();
       if (contextPoint) els.sideModal.classList.remove("hidden");
     });
+
+    els.pointMoveUpAction.addEventListener("click", () => {
+      hidePointContextMenu();
+      if (contextPoint) movePointInSequence(contextPoint, -1);
+    });
+
+    els.pointMoveDownAction.addEventListener("click", () => {
+      hidePointContextMenu();
+      if (contextPoint) movePointInSequence(contextPoint, 1);
+    });
+
+    els.pointReorderSideAction.addEventListener("click", () => {
+      hidePointContextMenu();
+      if (contextPoint) startTapReorder(contextPoint);
+    });
+
+    els.reorderCancelBtn.addEventListener("click", cancelTapReorder);
 
     els.pointDeleteAction.addEventListener("click", () => {
       hidePointContextMenu();
@@ -574,6 +600,7 @@ const Workspace = (() => {
   }
 
   function handleDrawingClick(event) {
+    if (tapReorderState) return;
     if (event.target.classList.contains("point")) return;
     if (commentTool !== "none") return;
 
@@ -615,11 +642,32 @@ const Workspace = (() => {
 
     points.push(point);
     dataType.counter += 1;
-    dataType.ordered = false;
+
+    if (dataType.manual) {
+      // Keep the manual order: guess this point's side and append it last.
+      const sidePoints = points.filter(p => p.dataId === dataType.id);
+      const bounds = getBounds(sidePoints);
+      point.assignedSide = guessSide(point, bounds);
+
+      const sideMax = Math.max(
+        0,
+        ...sidePoints
+          .filter(p => p.assignedSide === point.assignedSide && p !== point)
+          .map(p => p.manualSeq || 0)
+      );
+
+      point.manualSeq = sideMax + 1;
+    } else {
+      dataType.ordered = false;
+    }
 
     pushUndo({ type: "add", point });
     createPointElement(point);
     renderDataSelect(dataType.id);
+
+    if (dataType.manual) {
+      recalculateDataTypeOrder(dataType.id);
+    }
 
     setStatus(`${dataType.name}: ${measurement} added.`);
     scheduleAutoSave();
@@ -635,6 +683,11 @@ const Workspace = (() => {
     element.addEventListener("click", event => {
       event.stopPropagation();
 
+      if (tapReorderState) {
+        handleTapReorderPoint(point);
+        return;
+      }
+
       if (commentTool !== "none" || isDraggingPoint) return;
       editPoint(point);
     });
@@ -642,12 +695,14 @@ const Workspace = (() => {
     element.addEventListener("contextmenu", event => {
       event.preventDefault();
       event.stopPropagation();
+      if (tapReorderState) return;
       showPointContextMenu(event.clientX, event.clientY, point);
     });
 
     let timer = null;
 
     element.addEventListener("touchstart", event => {
+      if (tapReorderState) return;
       timer = setTimeout(() => {
         const touch = event.touches[0];
         showPointContextMenu(touch.clientX, touch.clientY, point);
@@ -905,6 +960,7 @@ const Workspace = (() => {
       if (!direction) return;
 
       dataType.direction = direction;
+      dataType.manual = false;
       assignMissingSidesForData(dataType.id);
       dataType.ordered = true;
 
@@ -927,11 +983,11 @@ const Workspace = (() => {
 
     if (!typePoints.length) return;
 
-    const centroid = getCentroid(typePoints);
+    const bounds = getBounds(typePoints);
 
     typePoints.forEach(point => {
       if (!point.assignedSide) {
-        point.assignedSide = guessSide(point, centroid);
+        point.assignedSide = guessSide(point, bounds);
       }
     });
   }
@@ -953,21 +1009,21 @@ const Workspace = (() => {
   }
 
   /*
-    Ordering is done by the angle of each point around the group's centre
-    (centroid), not by raw x/y against a bounding box. This keeps the walk
-    continuous around the perimeter even when the drawing is rotated/skewed
-    or the outline is irregular (L-shaped), which the old bounding-box method
-    got wrong. The output shape is unchanged: points are still grouped by
-    N/E/S/W side, each side numbered from 1, so the CSV and on-drawing labels
-    look exactly the same.
+    Ordering. By default this is the original bounding-box method: points are
+    grouped into N/E/S/W by which edge of the bounding box they are nearest to,
+    then each side is numbered along that edge.
+
+    If the data type is in MANUAL mode (the user has adjusted the order by hand
+    with Move Up/Down or Reorder-by-Tapping), the stored manual order is used
+    instead of geometry. Pressing "Order Current Data" again clears manual mode
+    and returns to automatic ordering.
   */
   function getOrderedPoints(dataId, direction) {
-    const typePoints =
-      points.filter(point => point.dataId === dataId);
+    const dataType = getDataType(dataId);
 
-    if (!typePoints.length) return [];
-
-    const centroid = getCentroid(typePoints);
+    if (dataType && dataType.manual) {
+      return getManualOrderedPoints(dataId, direction);
+    }
 
     const groups = {
       N: [],
@@ -976,18 +1032,52 @@ const Workspace = (() => {
       W: []
     };
 
-    typePoints.forEach(point => {
-      const angle = pointAngle(point, centroid);
-      const side = point.assignedSide || guessSide(point, centroid);
-
-      groups[side].push({
-        point,
-        key: traversalKey(angle, direction)
+    points
+      .filter(point => point.dataId === dataId)
+      .forEach(point => {
+        const side = point.assignedSide || "N";
+        groups[side].push(point);
       });
-    });
+
+    if (direction === "clockwise") {
+      groups.N.sort((a, b) => a.x - b.x);
+      groups.E.sort((a, b) => a.y - b.y);
+      groups.S.sort((a, b) => b.x - a.x);
+      groups.W.sort((a, b) => b.y - a.y);
+
+      return buildOrderedList(groups, ["N", "E", "S", "W"]);
+    }
+
+    groups.N.sort((a, b) => b.x - a.x);
+    groups.W.sort((a, b) => a.y - b.y);
+    groups.S.sort((a, b) => a.x - b.x);
+    groups.E.sort((a, b) => b.y - a.y);
+
+    return buildOrderedList(groups, ["N", "W", "S", "E"]);
+  }
+
+  /*
+    Manual order: within each side, points are sorted by their stored
+    manualSeq. buildOrderedList then renumbers them 1..n, so gaps left by
+    deletions do not matter.
+  */
+  function getManualOrderedPoints(dataId, direction) {
+    const groups = {
+      N: [],
+      E: [],
+      S: [],
+      W: []
+    };
+
+    points
+      .filter(point => point.dataId === dataId)
+      .forEach(point => {
+        const side = point.assignedSide || "N";
+        groups[side].push(point);
+      });
 
     Object.keys(groups).forEach(side => {
-      groups[side].sort((a, b) => a.key - b.key);
+      groups[side].sort((a, b) => (a.manualSeq || 0) - (b.manualSeq || 0));
     });
 
     const sideOrder = direction === "clockwise"
@@ -1001,9 +1091,9 @@ const Workspace = (() => {
     const result = [];
 
     order.forEach(side => {
-      groups[side].forEach((entry, index) => {
+      groups[side].forEach((point, index) => {
         result.push({
-          point: entry.point,
+          point,
           side,
           seq: index + 1
         });
@@ -1013,58 +1103,254 @@ const Workspace = (() => {
     return result;
   }
 
-  function getCentroid(typePoints) {
-    let sumX = 0;
-    let sumY = 0;
-
-    typePoints.forEach(point => {
-      sumX += point.x;
-      sumY += point.y;
-    });
-
-    const count = typePoints.length || 1;
+  function getBounds(typePoints) {
+    const xs = typePoints.map(point => point.x);
+    const ys = typePoints.map(point => point.y);
 
     return {
-      x: sumX / count,
-      y: sumY / count
+      minX: Math.min(...xs),
+      maxX: Math.max(...xs),
+      minY: Math.min(...ys),
+      maxY: Math.max(...ys)
     };
   }
 
-  /*
-    Angle of a point around the centre, in degrees 0..360.
-    Screen y grows downward, so it is flipped here: up = 90 (N),
-    right = 0 (E), down = 270 (S), left = 180 (W).
-  */
-  function pointAngle(point, centroid) {
-    const degrees =
-      Math.atan2(centroid.y - point.y, point.x - centroid.x) * 180 / Math.PI;
+  function guessSide(point, bounds) {
+    const distances = {
+      N: Math.abs(point.y - bounds.minY),
+      E: Math.abs(point.x - bounds.maxX),
+      S: Math.abs(point.y - bounds.maxY),
+      W: Math.abs(point.x - bounds.minX)
+    };
 
-    return (degrees + 360) % 360;
+    return Object.entries(distances)
+      .sort((a, b) => a[1] - b[1])[0][0];
   }
 
-  function guessSide(point, centroid) {
-    const angle = pointAngle(point, centroid);
+  /* ---------- Manual sequence adjustments ---------- */
 
-    if (angle >= 45 && angle < 135) return "N";
-    if (angle >= 135 && angle < 225) return "W";
-    if (angle >= 225 && angle < 315) return "S";
-    return "E";
+  /*
+    Capture the full ordering state of one data type (the manual/ordered flags
+    plus every point's side and manualSeq) so a reorder can be undone/redone as
+    a single step, however many points it touched.
+  */
+  function snapshotOrder(dataId) {
+    const dataType = getDataType(dataId);
+
+    return {
+      manual: !!(dataType && dataType.manual),
+      ordered: !!(dataType && dataType.ordered),
+      points: points
+        .filter(p => p.dataId === dataId)
+        .map(p => ({
+          uid: p.uid,
+          manualSeq: p.manualSeq,
+          assignedSide: p.assignedSide
+        }))
+    };
+  }
+
+  function restoreOrder(dataId, snap) {
+    const dataType = getDataType(dataId);
+
+    if (dataType) {
+      dataType.manual = snap.manual;
+      dataType.ordered = snap.ordered;
+    }
+
+    const byUid = {};
+    snap.points.forEach(entry => {
+      byUid[entry.uid] = entry;
+    });
+
+    points
+      .filter(p => p.dataId === dataId)
+      .forEach(p => {
+        const entry = byUid[p.uid];
+        if (entry) {
+          p.manualSeq = entry.manualSeq;
+          p.assignedSide = entry.assignedSide;
+        }
+      });
+
+    recalculateDataTypeOrder(dataId);
+    refreshAllPoints();
+    renderDataSelect(dataId);
   }
 
   /*
-    A value that increases smoothly as you walk the perimeter in the chosen
-    direction. The walk starts at a CORNER, not the middle of a side, so each
-    side is numbered continuously from one corner to the next:
-      - clockwise starts at the top-left corner (135 degrees),
-      - counter-clockwise starts at the top-right corner (45 degrees).
-    The corners sit on the 45/135/225/315-degree diagonals, which are the
-    boundaries between the N/E/S/W sides. Because it is angle-based it does
-    not depend on the drawing being axis-aligned.
+    Freeze the current automatic order into each point's manualSeq (numbered
+    per side), and switch the data type into manual mode. Idempotent.
   */
-  function traversalKey(angle, direction) {
-    return direction === "clockwise"
-      ? (135 - angle + 360) % 360
-      : (angle - 45 + 360) % 360;
+  function enterManualMode(dataId) {
+    const dataType = getDataType(dataId);
+    if (!dataType || dataType.manual) return;
+
+    const ordered = getOrderedPoints(
+      dataId,
+      dataType.direction || "clockwise"
+    );
+
+    ordered.forEach(item => {
+      item.point.assignedSide = item.side;
+      item.point.manualSeq = item.seq;
+    });
+
+    dataType.manual = true;
+  }
+
+  function movePointInSequence(point, delta) {
+    const dataType = getDataType(point.dataId);
+    if (!dataType) return;
+
+    if (!dataType.ordered) {
+      setStatus("Order this data first, then adjust the sequence.");
+      return;
+    }
+
+    const side = point.assignedSide;
+
+    // Current order of this side, honouring auto or manual mode.
+    const sideList = getOrderedPoints(point.dataId, dataType.direction || "clockwise")
+      .filter(item => item.side === side)
+      .map(item => item.point);
+
+    const index = sideList.indexOf(point);
+    const swapIndex = index + delta;
+
+    if (index < 0 || swapIndex < 0 || swapIndex >= sideList.length) {
+      setStatus(
+        delta < 0
+          ? "Already first on this side."
+          : "Already last on this side."
+      );
+      return;
+    }
+
+    const other = sideList[swapIndex];
+
+    const before = snapshotOrder(point.dataId);
+    enterManualMode(point.dataId);
+
+    const temp = point.manualSeq;
+    point.manualSeq = other.manualSeq;
+    other.manualSeq = temp;
+
+    const after = snapshotOrder(point.dataId);
+    pushUndo({ type: "reorder", dataId: point.dataId, before, after });
+
+    recalculateDataTypeOrder(point.dataId);
+    refreshAllPoints();
+    renderDataSelect(dataType.id);
+
+    setStatus(
+      `Moved ${point.measurement} ${delta < 0 ? "up" : "down"} on side ${side}.`
+    );
+
+    scheduleAutoSave();
+  }
+
+  function startTapReorder(point) {
+    const dataType = getDataType(point.dataId);
+    if (!dataType) return;
+
+    if (!dataType.ordered) {
+      setStatus("Order this data first, then reorder a side.");
+      return;
+    }
+
+    const side = point.assignedSide;
+
+    const total = points.filter(
+      p => p.dataId === point.dataId && p.assignedSide === side
+    ).length;
+
+    tapReorderState = {
+      dataId: point.dataId,
+      side,
+      total,
+      order: []
+    };
+
+    clearPointSelection();
+    updateReorderBar();
+    els.reorderBar.classList.remove("hidden");
+  }
+
+  function handleTapReorderPoint(point) {
+    if (!tapReorderState) return;
+
+    if (
+      point.dataId !== tapReorderState.dataId ||
+      point.assignedSide !== tapReorderState.side
+    ) {
+      setStatus(`Tap points on side ${tapReorderState.side} only.`);
+      return;
+    }
+
+    if (tapReorderState.order.includes(point)) return;
+
+    tapReorderState.order.push(point);
+
+    const element = findPointElement(point.uid);
+    if (element) {
+      element.classList.add("reorderPicked");
+      element.textContent = String(tapReorderState.order.length);
+    }
+
+    updateReorderBar();
+
+    if (tapReorderState.order.length === tapReorderState.total) {
+      finishTapReorder();
+    }
+  }
+
+  function updateReorderBar() {
+    if (!tapReorderState) return;
+
+    els.reorderBarText.textContent =
+      `Tap side ${tapReorderState.side} points in order: ` +
+      `${tapReorderState.order.length} / ${tapReorderState.total}`;
+  }
+
+  function finishTapReorder() {
+    if (!tapReorderState) return;
+
+    const { dataId, order } = tapReorderState;
+
+    const before = snapshotOrder(dataId);
+
+    // Baseline the other sides, then override this side with the tap order.
+    enterManualMode(dataId);
+
+    order.forEach((point, index) => {
+      point.manualSeq = index + 1;
+    });
+
+    const dataType = getDataType(dataId);
+    if (dataType) dataType.manual = true;
+
+    const after = snapshotOrder(dataId);
+    pushUndo({ type: "reorder", dataId, before, after });
+
+    tapReorderState = null;
+    els.reorderBar.classList.add("hidden");
+
+    recalculateDataTypeOrder(dataId);
+    refreshAllPoints();
+    if (dataType) renderDataSelect(dataType.id);
+
+    setStatus("Side reordered by tapping.");
+    scheduleAutoSave();
+  }
+
+  function cancelTapReorder() {
+    if (!tapReorderState) return;
+
+    tapReorderState = null;
+    els.reorderBar.classList.add("hidden");
+    refreshAllPoints();
+    setStatus("Reorder cancelled.");
   }
 
   function toggleOrderLabels() {
@@ -1395,6 +1681,10 @@ const Workspace = (() => {
       renderDataSelect(action.dataId);
     }
 
+    if (action.type === "reorder") {
+      restoreOrder(action.dataId, action.before);
+    }
+
     if (action.type === "comment") {
       restoreCommentImage(action.before);
     }
@@ -1447,6 +1737,10 @@ const Workspace = (() => {
       action.point.assignedSide = action.newSide;
       recalculateDataTypeOrder(action.dataId);
       renderDataSelect(action.dataId);
+    }
+
+    if (action.type === "reorder") {
+      restoreOrder(action.dataId, action.after);
     }
 
     if (action.type === "comment") {
@@ -1640,7 +1934,8 @@ const Workspace = (() => {
 
       context.textAlign = "center";
       context.textBaseline = "middle";
-      context.font = "bold 30px Arial, sans-serif";
+      context.font = "30px Arial, sans-serif";
+      context.lineJoin = "round";
 
       points.forEach(point => {
         const dataType = getDataType(point.dataId);
@@ -1652,6 +1947,11 @@ const Workspace = (() => {
           showOrderLabels && point.assignedSide && point.assignedSeq
             ? `${point.assignedSide}${point.assignedSeq} ${measurement}`
             : measurement;
+
+        // White outline first, then the coloured text on top.
+        context.lineWidth = 6;
+        context.strokeStyle = "#ffffff";
+        context.strokeText(label, point.x, point.y);
 
         context.fillStyle = dataType?.color || "#000000";
         context.fillText(label, point.x, point.y);

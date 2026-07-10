@@ -214,3 +214,52 @@ VERSION 6.3.1 — ORDERING START-CORNER FIX
   rotation robustness added in 6.3.
 - Only workspace.js and sw.js changed since 6.3.
 - sw.js CACHE_VERSION bumped to v6-3-1.
+
+
+VERSION 6.4 — ORDERING REVERTED + MANUAL ADJUSTMENTS
+
+ORDERING
+- Reverted to the original bounding-box ordering (the version you preferred).
+- The rotated-drawing (centroid-angle) experiment was removed.
+
+MANUAL SEQUENCE ADJUSTMENTS (long-press a point to open its menu)
+- "↑ Move Up in Order" / "↓ Move Down in Order":
+  swaps a point with its neighbour within the same side. Use it to fix two
+  close points that ordered the wrong way round.
+- "Reorder Side by Tapping":
+  a blue bar appears; tap the points on that side one by one in the order you
+  want. Numbering follows your taps. It finishes automatically after the last
+  point, or press Cancel to abort.
+
+HOW MANUAL AND AUTOMATIC INTERACT
+- The first manual adjustment puts that data type into MANUAL mode; the CSV and
+  the on-drawing labels then follow the manual order (geometry no longer
+  overrides it).
+- New points added in manual mode are appended to the end of their side.
+- Pressing "Order Current Data" again clears manual mode and returns to fully
+  automatic ordering (treat it as a "reset to automatic" button).
+- Assign Side is unchanged and still overrides which side a point belongs to.
+
+NOTE: Move Up/Down and tap-reorder are not covered by Undo yet; press the
+opposite action or re-run Order Current Data to revert.
+
+FILES CHANGED IN 6.4: index.html, style.css, workspace.js, sw.js
+sw.js CACHE_VERSION bumped to v6-4.
+
+
+VERSION 6.5 — UNDO FOR MANUAL ORDER + LABEL STYLING
+
+UNDO / REDO NOW COVER MANUAL ORDERING
+- "Move Up/Down in Order" and "Reorder Side by Tapping" can now be undone and
+  redone with the normal Undo (⟲) / Redo (⟳) buttons.
+- Undo also restores automatic mode if the adjustment was the first manual
+  change, so undoing returns you exactly to the automatic order.
+
+MEASUREMENT LABEL STYLING
+- On-drawing measurement labels now have a white outline so they stay readable
+  over dark or busy drawings.
+- Font changed to a lighter (thinner) Arial. Size is unchanged.
+- The exported PDF uses the same white-outlined, thinner labels.
+
+FILES CHANGED IN 6.5: style.css, workspace.js, sw.js
+sw.js CACHE_VERSION bumped to v6-5.

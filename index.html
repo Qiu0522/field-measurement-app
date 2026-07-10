@@ -112,6 +112,11 @@
       <span id="status" class="statusText">Ready.</span>
     </div>
 
+    <div id="reorderBar" class="reorderBar hidden">
+      <span id="reorderBarText"></span>
+      <button id="reorderCancelBtn" type="button">Cancel</button>
+    </div>
+
     <div id="drawingWrapper">
       <div id="drawingArea">
         <img id="drawingImage" alt="Drawing" class="hidden">
@@ -137,6 +142,9 @@
     <button id="pointEditAction" type="button">Edit Measurement</button>
     <button id="pointMoveAction" type="button">Move Point</button>
     <button id="pointAssignSideAction" type="button">Assign Side</button>
+    <button id="pointMoveUpAction" type="button">↑ Move Up in Order</button>
+    <button id="pointMoveDownAction" type="button">↓ Move Down in Order</button>
+    <button id="pointReorderSideAction" type="button">Reorder Side by Tapping</button>
     <button id="pointDeleteAction" class="dangerText" type="button">Delete Point</button>
   </div>
 
