@@ -37,7 +37,7 @@
     </header>
 
     <div class="libraryNavigation">
-      <button id="upFolderBtn" class="toolbarButton" type="button" disabled>← Up</button>
+      <button id="upFolderBtn" class="toolbarButton" type="button" disabled>← Back</button>
       <div id="folderBreadcrumb" class="folderBreadcrumb"></div>
     </div>
 
@@ -80,6 +80,10 @@
 
       <button id="undoBtn" class="toolbarButton iconButton" type="button" title="Undo">⟲</button>
       <button id="redoBtn" class="toolbarButton iconButton" type="button" title="Redo">⟳</button>
+
+      <button id="zoomOutBtn" class="toolbarButton iconButton" type="button" title="Zoom Out">−</button>
+      <span id="zoomDisplay" class="zoomDisplay">100%</span>
+      <button id="zoomInBtn" class="toolbarButton iconButton" type="button" title="Zoom In">＋</button>
 
       <button id="orderBtn" class="toolbarButton" type="button">Order Current Data</button>
       <button id="labelsBtn" class="toolbarButton" type="button">Show Order Labels</button>
@@ -185,30 +189,27 @@
         aria-label="Measurement"
       >
 
-      <div class="measurementKeypad">
-        <div class="numberPad">
+      <div class="measurementKeypad v6Keypad">
+        <div class="v6MainGrid">
           <button data-key="7">7</button>
           <button data-key="8">8</button>
           <button data-key="9">9</button>
+          <button data-action="backspace" class="operatorButton" title="Backspace">⌫</button>
 
           <button data-key="4">4</button>
           <button data-key="5">5</button>
           <button data-key="6">6</button>
+          <button data-denominator="4" class="fractionButton">/4</button>
 
           <button data-key="1">1</button>
           <button data-key="2">2</button>
           <button data-key="3">3</button>
+          <button data-denominator="8" class="fractionButton">/8</button>
 
-          <button data-fraction="1/4">1/4</button>
-          <button data-fraction="1/8">1/8</button>
-          <button data-fraction="1/16">1/16</button>
-        </div>
-
-        <div class="operatorPad">
-          <button data-action="backspace" class="operatorButton" title="Backspace">⌫</button>
+          <button data-key="0">0</button>
           <button data-key="/" class="operatorButton">/</button>
           <button data-action="negative" class="operatorButton">−</button>
-          <button data-action="clear" class="operatorButton clearButton" title="Clear">🗑</button>
+          <button data-denominator="16" class="fractionButton">/16</button>
         </div>
 
         <button data-key=" " class="spaceButton">SPACE</button>
@@ -220,8 +221,9 @@
       </div>
 
       <p class="measurementHint">
-        A typed space is shown as an underscore while entering, for example
-        <strong>26_3/8</strong>. It is saved and exported as <strong>26 3/8</strong>.
+        Type the numerator first, then tap <strong>/4</strong>, <strong>/8</strong>,
+        or <strong>/16</strong>. A space appears as an underscore while typing:
+        <strong>26_3/8</strong> is saved as <strong>26 3/8</strong>.
       </p>
     </div>
   </div>

@@ -774,3 +774,120 @@ button {
 .saveIndicator.saveFailed {
   border: 1px solid #d76666;
 }
+
+
+/* ---------------------- Version 5.1 UI fixes ---------------------- */
+
+.denominator16Button {
+  grid-column: 1 / -1;
+}
+
+.zoomDisplay {
+  min-width: 52px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: #eef1f4;
+  color: #40454b;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+#zoomInBtn,
+#zoomOutBtn {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+
+/* ---------------------- Version 6 Measurement Keyboard ---------------------- */
+
+.v6Keypad {
+  display: block;
+  margin-top: 14px;
+}
+
+.v6MainGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.v6MainGrid button {
+  min-height: 66px;
+  border: 1px solid #999ea5;
+  border-radius: 10px;
+  background: #f6f7f8;
+  color: #1e1f21;
+  font-size: 28px;
+  font-weight: 650;
+  touch-action: manipulation;
+}
+
+.v6MainGrid button:active {
+  transform: scale(0.97);
+  background: #dfe3e8;
+}
+
+.v6MainGrid .fractionButton {
+  background: #eef4fb;
+  border-color: #9db1c6;
+}
+
+.v6MainGrid .operatorButton {
+  background: #f1f2f4;
+}
+
+.v6Keypad .spaceButton {
+  width: 100%;
+  min-height: 60px !important;
+  margin-top: 10px;
+  border: 1px solid #7ba7d5;
+  border-radius: 10px;
+  background: #dceeff;
+  color: #124b7a;
+  font-size: 20px !important;
+  font-weight: 750;
+  letter-spacing: 2px;
+}
+
+.v6Keypad .measurementActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.v6Keypad .measurementActions button {
+  min-height: 58px;
+  border-radius: 10px;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.v6Keypad #cancelMeasurementBtn {
+  background: #f1f2f4;
+  color: #333;
+}
+
+.v6Keypad .confirmMeasurementButton {
+  border-color: #18823a !important;
+  background: #1f9445 !important;
+  color: white !important;
+}
+
+@media (max-width: 620px) {
+  .v6MainGrid {
+    gap: 7px;
+  }
+
+  .v6MainGrid button {
+    min-height: 58px;
+    font-size: 24px;
+  }
+
+  .v6Keypad .spaceButton {
+    min-height: 54px !important;
+  }
+}

@@ -59,6 +59,9 @@ const Workspace = (() => {
     els.eraserBtn = document.getElementById("eraserBtn");
     els.undoBtn = document.getElementById("undoBtn");
     els.redoBtn = document.getElementById("redoBtn");
+    els.zoomOutBtn = document.getElementById("zoomOutBtn");
+    els.zoomInBtn = document.getElementById("zoomInBtn");
+    els.zoomDisplay = document.getElementById("zoomDisplay");
     els.orderBtn = document.getElementById("orderBtn");
     els.labelsBtn = document.getElementById("labelsBtn");
     els.exportCsvBtn = document.getElementById("exportCsvBtn");
@@ -200,6 +203,14 @@ const Workspace = (() => {
       scheduleAutoSave();
     }, { passive: false });
 
+    els.zoomInBtn.addEventListener("click", () => {
+      changeZoom(0.2);
+    });
+
+    els.zoomOutBtn.addEventListener("click", () => {
+      changeZoom(-0.2);
+    });
+
     els.pointEditAction.addEventListener("click", () => {
       hidePointContextMenu();
       if (contextPoint) editPoint(contextPoint);
@@ -245,21 +256,18 @@ const Workspace = (() => {
       });
     });
 
-    els.measurementModal.querySelectorAll("[data-fraction]").forEach(button => {
+    els.measurementModal.querySelectorAll("[data-denominator]").forEach(button => {
       button.addEventListener("click", () => {
-        appendMeasurementFraction(button.dataset.fraction);
+        appendMeasurementDenominator(button.dataset.denominator);
       });
+    });
+
     });
 
     els.measurementModal
       .querySelector('[data-action="backspace"]')
       .addEventListener("click", measurementBackspace);
 
-    els.measurementModal
-      .querySelector('[data-action="clear"]')
-      .addEventListener("click", () => {
-        setMeasurementRawValue("");
-      });
 
     els.measurementModal
       .querySelector('[data-action="negative"]')
@@ -1016,14 +1024,31 @@ const Workspace = (() => {
     setMeasurementRawValue(measurementRawValue + value);
   }
 
-  function appendMeasurementFraction(fraction) {
+  function appendMeasurementDenominator(denominator) {
+    /*
+      Example:
+      3 + /8  -> 3/8
+      26_3 + /8 -> 26_3/8
+
+      If the current value already ends in a completed fraction, the button
+      starts a new fraction after a visible space.
+    */
     let nextValue = measurementRawValue;
 
-    if (nextValue && !nextValue.endsWith(" ")) {
-      nextValue += " ";
+    if (!nextValue) {
+      setMeasurementRawValue("1/" + denominator);
+      return;
     }
 
-    nextValue += fraction;
+    const lastToken = nextValue.split(" ").pop();
+
+    if (lastToken.includes("/")) {
+      if (!nextValue.endsWith(" ")) nextValue += " ";
+      nextValue += "1/" + denominator;
+    } else {
+      nextValue += "/" + denominator;
+    }
+
     setMeasurementRawValue(nextValue);
   }
 
@@ -1470,8 +1495,46 @@ const Workspace = (() => {
     SaveController.markSaved();
   }
 
+  function changeZoom(delta) {
+    const wrapper = els.drawingWrapper;
+    const oldZoom = zoomLevel;
+
+    const centerX = wrapper.scrollLeft + wrapper.clientWidth / 2;
+    const centerY = wrapper.scrollTop + wrapper.clientHeight / 2;
+
+    zoomLevel = Math.max(
+      0.3,
+      Math.min(5, Math.round((zoomLevel + delta) * 100) / 100)
+    );
+
+    if (zoomLevel === oldZoom) return;
+
+    applyZoom();
+
+    const ratio = zoomLevel / oldZoom;
+
+    requestAnimationFrame(() => {
+      wrapper.scrollLeft = centerX * ratio - wrapper.clientWidth / 2;
+      wrapper.scrollTop = centerY * ratio - wrapper.clientHeight / 2;
+    });
+
+    scheduleAutoSave();
+  }
+
   function applyZoom() {
     els.drawingArea.style.transform = `scale(${zoomLevel})`;
+
+    if (els.zoomDisplay) {
+      els.zoomDisplay.textContent = Math.round(zoomLevel * 100) + "%";
+    }
+
+    if (els.zoomOutBtn) {
+      els.zoomOutBtn.disabled = zoomLevel <= 0.3;
+    }
+
+    if (els.zoomInBtn) {
+      els.zoomInBtn.disabled = zoomLevel >= 5;
+    }
   }
 
   function getDrawingPosition(event) {
