@@ -1,6 +1,7 @@
 "use strict";
 
 const Workspace = (() => {
+  const LIVE_INK_SCALE = 0.3;
   const DEFAULT_DATA_TYPES = [
     { id: "data1", name: "测量落差", color: "#0066ff", counter: 1, export: true, ordered: false, direction: "clockwise" },
     { id: "data2", name: "Embed 距离", color: "#ff0000", counter: 1, export: true, ordered: false, direction: "clockwise" },
@@ -522,8 +523,10 @@ const Workspace = (() => {
     els.commentCanvas.height = height;
     els.commentCanvas.style.width = width + "px";
     els.commentCanvas.style.height = height + "px";
-    els.liveInkCanvas.width = width;
-    els.liveInkCanvas.height = height;
+    // Keep the live Pencil surface much smaller internally. CSS stretches it
+    // over the full drawing, while stored stroke coordinates stay full-size.
+    els.liveInkCanvas.width = Math.max(1, Math.round(width * LIVE_INK_SCALE));
+    els.liveInkCanvas.height = Math.max(1, Math.round(height * LIVE_INK_SCALE));
     els.liveInkCanvas.style.width = width + "px";
     els.liveInkCanvas.style.height = height + "px";
   }
@@ -1766,7 +1769,8 @@ const Workspace = (() => {
       if (!["pen", "mouse"].includes(event.pointerType)) return;
 
       event.preventDefault();
-      const context = inkCanvas.getContext("2d");
+      const context = inkCanvas.getContext("2d", { alpha: true, desynchronized: true });
+      context.setTransform(LIVE_INK_SCALE, 0, 0, LIVE_INK_SCALE, 0, 0);
       context.lineCap = "round";
       context.lineJoin = "round";
 
@@ -1894,12 +1898,14 @@ const Workspace = (() => {
     isDrawingComment = false;
     const stroke = currentCommentStroke;
     currentCommentStroke = null;
-    els.liveInkCanvas.getContext("2d").clearRect(
-      0, 0, els.liveInkCanvas.width, els.liveInkCanvas.height
-    );
+    const liveContext = els.liveInkCanvas.getContext("2d");
+    liveContext.setTransform(1, 0, 0, 1, 0, 0);
+    liveContext.clearRect(0, 0, els.liveInkCanvas.width, els.liveInkCanvas.height);
     if (!stroke || stroke.points.length < 2) return;
     commentStrokes.push(stroke);
-    renderStoredStrokes();
+    // Composite only the completed stroke. A full history redraw is reserved
+    // for Undo/Redo and project loading.
+    drawVectorStroke(els.commentCanvas.getContext("2d"), stroke);
     pushUndo({ type: "vectorComment", stroke, index: commentStrokes.length - 1 });
     scheduleAutoSave();
   }
