@@ -3,1743 +3,238 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Field Measurement App</title>
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Field Measurement">
+  <meta name="theme-color" content="#f4f5f7">
+
+  <title>Field Measurement</title>
+
+  <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.json">
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-
-  <style>
-    * { box-sizing: border-box; }
-
-    body {
-      font-family: Arial, sans-serif;
-      margin: 0;
-      overflow: hidden;
-      background: #f5f5f5;
-    }
-
-    #toolbar {
-      position: sticky;
-      top: 0;
-      z-index: 100;
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 5px;
-      padding: 8px;
-      background: #eeeeee;
-      border-bottom: 1px solid #bbbbbb;
-      font-size: 13px;
-    }
-
-    button, select, input {
-      font: inherit;
-    }
-
-    button {
-      min-height: 34px;
-      padding: 5px 10px;
-      border: 1px solid #999999;
-      border-radius: 5px;
-      background: #f5f5f5;
-      cursor: pointer;
-    }
-
-    button:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    .activeTool {
-      background: #5f5f5f !important;
-      color: white !important;
-      border-color: #333333 !important;
-      font-weight: bold;
-    }
-
-    #fileInput {
-      max-width: 190px;
-    }
-
-    #dataSelect {
-      max-width: 240px;
-      min-height: 34px;
-    }
-
-    #status {
-      flex: 1 1 280px;
-      min-width: 220px;
-      padding-left: 6px;
-      font-weight: bold;
-    }
-
-    #drawingWrapper {
-      width: 100vw;
-      height: calc(100vh - 72px);
-      overflow: auto;
-      background: #f5f5f5;
-      touch-action: pan-x pan-y pinch-zoom;
-      -webkit-overflow-scrolling: touch;
-    }
-
-    #drawingArea {
-      position: relative;
-      display: inline-block;
-      margin: 10px;
-      background: white;
-      border: 1px solid #cccccc;
-      transform-origin: top left;
-    }
-
-    #drawing, #pdfCanvas {
-      display: block;
-      max-width: none;
-    }
-
-    #commentCanvas {
-      position: absolute;
-      left: 0;
-      top: 0;
-      z-index: 5;
-      display: block;
-      pointer-events: auto;
-      touch-action: pan-x pan-y pinch-zoom;
-    }
-
-    .point {
-      position: absolute;
-      z-index: 10;
-      min-width: 22px;
-      padding: 0;
-      border: none;
-      outline: none;
-      background: transparent;
-      transform: translate(-50%, -50%);
-      text-align: center;
-      white-space: nowrap;
-      font-size: 30px;
-      font-weight: bold;
-      line-height: 1;
-      cursor: pointer;
-      user-select: none;
-      -webkit-user-select: none;
-      touch-action: manipulation;
-    }
-
-    .point.selected {
-      background: rgba(255, 235, 59, 0.38);
-      text-decoration: underline;
-    }
-
-    #contextMenu {
-      position: fixed;
-      z-index: 3000;
-      display: none;
-      min-width: 170px;
-      padding: 4px;
-      background: white;
-      border: 1px solid #aaaaaa;
-      border-radius: 6px;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.25);
-    }
-
-    #contextMenu button {
-      display: block;
-      width: 100%;
-      border: none;
-      background: white;
-      text-align: left;
-      padding: 9px 10px;
-    }
-
-    #contextMenu button:hover {
-      background: #eeeeee;
-    }
-
-    .modalBackdrop {
-      position: fixed;
-      inset: 0;
-      z-index: 4000;
-      display: none;
-      align-items: center;
-      justify-content: center;
-      padding: 16px;
-      background: rgba(0,0,0,0.35);
-    }
-
-    .modalCard {
-      width: min(390px, 96vw);
-      max-height: 92vh;
-      overflow: auto;
-      padding: 14px;
-      border-radius: 10px;
-      background: white;
-      box-shadow: 0 8px 28px rgba(0,0,0,0.28);
-    }
-
-    .modalTitle {
-      margin-bottom: 10px;
-      font-size: 17px;
-      font-weight: bold;
-    }
-
-    #measurementInput,
-    #dataTypeNameInput {
-      width: 100%;
-      min-height: 46px;
-      padding: 8px;
-      border: 1px solid #999999;
-      border-radius: 6px;
-      font-size: 24px;
-      text-align: center;
-    }
-
-    #dataTypeNameInput {
-      font-size: 17px;
-      text-align: left;
-    }
-
-    .keypad {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 7px;
-      margin-top: 10px;
-    }
-
-    .keypad button {
-      min-height: 46px;
-      font-size: 17px;
-    }
-
-    .modalActions {
-      display: flex;
-      gap: 8px;
-      margin-top: 12px;
-    }
-
-    .modalActions button {
-      flex: 1;
-      min-height: 42px;
-    }
-
-    .sideButtons {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 8px;
-      margin-top: 12px;
-    }
-
-    .sideButtons button {
-      min-height: 48px;
-      font-size: 18px;
-      font-weight: bold;
-    }
-
-    .smallHint {
-      margin-top: 8px;
-      color: #555555;
-      font-size: 12px;
-      line-height: 1.35;
-    }
-
-    @media (max-width: 900px) {
-      #toolbar {
-        gap: 4px;
-        padding: 6px;
-      }
-
-      button {
-        min-height: 38px;
-      }
-
-      .point {
-        font-size: 28px;
-      }
-
-      #drawingWrapper {
-        height: calc(100vh - 116px);
-      }
-    }
-  </style>
 </head>
 
 <body>
-  <div id="toolbar">
-    <input type="file" id="fileInput" accept="image/*,.pdf">
+  <!-- ========================= HOME ========================= -->
+  <section id="homeView" class="view">
+    <header class="homeHeader">
+      <div>
+        <h1>Field Measurement</h1>
+        <p>Projects are saved automatically on this device.</p>
+      </div>
 
-    <label for="dataSelect"><strong>Select Data:</strong></label>
-    <select id="dataSelect"></select>
+      <button id="newProjectBtn" class="primaryButton largeButton" type="button">
+        ＋ New Work File
+      </button>
+    </header>
 
-    <button id="addBtn" onclick="setPointMode('add')">Add Points</button>
-    <button id="lockBtn" onclick="setPointMode('lock')">🔒 Lock Points</button>
+    <div class="homeTools">
+      <input id="projectSearch" type="search" placeholder="Search tower, floor, or project name">
+      <select id="towerFilter">
+        <option value="">All towers</option>
+      </select>
+    </div>
 
-    <button id="penBtn" onclick="toggleCommentTool('pen')" title="Pen">✏️</button>
+    <div id="emptyLibrary" class="emptyState">
+      <div class="emptyIcon">📁</div>
+      <h2>No work files yet</h2>
+      <p>Choose “New Work File” to import a PDF or create a blank drawing.</p>
+    </div>
 
-    <button id="eraserBtn" onclick="toggleCommentTool('eraser')" title="Eraser">
-      <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor"
-           stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"
-           aria-hidden="true">
-        <path d="M20 20H7L3 16C2.5 15.5 2.5 14.5 3 14L13 4L20 11L11 20"/>
-        <path d="M6 11L13 18"/>
-      </svg>
-    </button>
+    <div id="projectGrid" class="projectGrid"></div>
+  </section>
 
-    <button onclick="undo()" title="Undo">⟲</button>
-    <button onclick="redo()" title="Redo">⟳</button>
+  <!-- ======================= WORKSPACE ======================= -->
+  <section id="workspaceView" class="view hidden">
+    <div id="toolbar">
+      <button id="backHomeBtn" class="toolbarButton" type="button">← Library</button>
 
-    <button onclick="orderCurrentData()">Order Current Data</button>
-    <button id="previewToggleBtn" onclick="toggleOrderLabels()">Show Order Labels</button>
+      <span id="workspaceProjectName" class="workspaceTitle">Untitled</span>
 
-    <button onclick="exportCSV()">Export CSV</button>
-    <button onclick="exportPDF()">Export PDF</button>
+      <label class="compactLabel">
+        Data
+        <select id="dataSelect"></select>
+      </label>
 
-    <span id="status">Choose a PDF or image first.</span>
+      <button id="addBtn" class="toolbarButton" type="button">Add Points</button>
+      <button id="lockBtn" class="toolbarButton" type="button">🔒 Lock Points</button>
+
+      <button id="penBtn" class="toolbarButton iconButton" type="button" title="Pen">✏️</button>
+      <button id="eraserBtn" class="toolbarButton iconButton" type="button" title="Eraser">
+        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor"
+             stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 20H7L3 16C2.5 15.5 2.5 14.5 3 14L13 4L20 11L11 20"/>
+          <path d="M6 11L13 18"/>
+        </svg>
+      </button>
+
+      <button id="undoBtn" class="toolbarButton iconButton" type="button" title="Undo">⟲</button>
+      <button id="redoBtn" class="toolbarButton iconButton" type="button" title="Redo">⟳</button>
+
+      <button id="orderBtn" class="toolbarButton" type="button">Order Current Data</button>
+      <button id="labelsBtn" class="toolbarButton" type="button">Show Order Labels</button>
+
+      <button id="exportCsvBtn" class="toolbarButton" type="button">Export CSV</button>
+      <button id="exportPdfBtn" class="toolbarButton" type="button">Export PDF</button>
+
+      <span id="saveIndicator" class="saveIndicator">Saved</span>
+      <span id="status" class="statusText">Ready.</span>
+    </div>
+
+    <div id="drawingWrapper">
+      <div id="drawingArea">
+        <img id="drawingImage" alt="Drawing" class="hidden">
+        <canvas id="pdfCanvas" class="hidden"></canvas>
+        <canvas id="commentCanvas"></canvas>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================== MENUS ========================= -->
+  <div id="newProjectMenu" class="popupMenu hidden">
+    <button id="importPdfChoice" type="button">📄 Import PDF</button>
+    <button id="blankChoice" type="button">⬜ Blank Drawing</button>
   </div>
 
-  <div id="drawingWrapper">
-    <div id="drawingArea">
-      <img id="drawing" alt="Drawing" style="display:none;">
-      <canvas id="pdfCanvas" style="display:none;"></canvas>
-      <canvas id="commentCanvas"></canvas>
+  <div id="projectContextMenu" class="popupMenu hidden">
+    <button id="renameProjectAction" type="button">Rename</button>
+    <button id="duplicateProjectAction" type="button">Duplicate</button>
+    <button id="deleteProjectAction" class="dangerText" type="button">Delete</button>
+  </div>
+
+  <div id="pointContextMenu" class="popupMenu hidden">
+    <button id="pointEditAction" type="button">Edit Measurement</button>
+    <button id="pointMoveAction" type="button">Move Point</button>
+    <button id="pointAssignSideAction" type="button">Assign Side</button>
+    <button id="pointDeleteAction" class="dangerText" type="button">Delete Point</button>
+  </div>
+
+  <!-- ======================== MODALS ======================== -->
+  <div id="projectModal" class="modalBackdrop hidden">
+    <div class="modalCard">
+      <h2 id="projectModalTitle">New Work File</h2>
+
+      <label>
+        Work file name
+        <input id="projectNameInput" type="text" placeholder="Tower A - Level 12">
+      </label>
+
+      <label>
+        Tower / building
+        <input id="towerInput" type="text" placeholder="Tower A">
+      </label>
+
+      <label>
+        Floor / level
+        <input id="floorInput" type="text" placeholder="Level 12">
+      </label>
+
+      <div id="blankSizeFields" class="hidden">
+        <div class="fieldRow">
+          <label>
+            Width
+            <input id="blankWidthInput" type="number" min="500" value="2400">
+          </label>
+          <label>
+            Height
+            <input id="blankHeightInput" type="number" min="500" value="1600">
+          </label>
+        </div>
+      </div>
+
+      <input id="pdfFileInput" type="file" accept=".pdf,application/pdf" class="hidden">
+
+      <div class="modalActions">
+        <button id="cancelProjectModal" type="button">Cancel</button>
+        <button id="confirmProjectModal" class="primaryButton" type="button">Create</button>
+      </div>
     </div>
   </div>
 
-  <div id="contextMenu">
-    <button onclick="contextEdit()">Edit Measurement</button>
-    <button onclick="contextMove()">Move Point</button>
-    <button onclick="openAssignSideModal()">Assign Side</button>
-    <button onclick="contextDelete()">Delete Point</button>
-  </div>
+  <div id="measurementModal" class="modalBackdrop hidden">
+    <div class="modalCard measurementCard">
+      <h2 id="measurementTitle">Enter Measurement</h2>
 
-  <div id="measurementBackdrop" class="modalBackdrop">
-    <div class="modalCard">
-      <div id="measurementTitle" class="modalTitle">Enter Measurement</div>
-      <input
-        id="measurementInput"
-        type="text"
-        inputmode="none"
-        readonly
-        autocomplete="off"
-        autocapitalize="off"
-        spellcheck="false"
-        placeholder="Example: 26 3/8"
-      >
+      <input id="measurementDisplay" type="text" readonly tabindex="-1" placeholder="Example: -26 3/8">
 
       <div class="keypad">
-        <button onclick="appendMeasurement('7')">7</button>
-        <button onclick="appendMeasurement('8')">8</button>
-        <button onclick="appendMeasurement('9')">9</button>
-        <button onclick="measurementBackspace()">⌫</button>
+        <button data-key="7">7</button>
+        <button data-key="8">8</button>
+        <button data-key="9">9</button>
+        <button data-action="backspace">⌫</button>
 
-        <button onclick="appendMeasurement('4')">4</button>
-        <button onclick="appendMeasurement('5')">5</button>
-        <button onclick="appendMeasurement('6')">6</button>
-        <button onclick="appendMeasurement(' ')">Space</button>
+        <button data-key="4">4</button>
+        <button data-key="5">5</button>
+        <button data-key="6">6</button>
+        <button data-key=" ">Space</button>
 
-        <button onclick="appendMeasurement('1')">1</button>
-        <button onclick="appendMeasurement('2')">2</button>
-        <button onclick="appendMeasurement('3')">3</button>
-        <button onclick="appendMeasurement('/')">/</button>
+        <button data-key="1">1</button>
+        <button data-key="2">2</button>
+        <button data-key="3">3</button>
+        <button data-key="/">/</button>
 
-        <button onclick="appendMeasurement('0')">0</button>
-        <button onclick="toggleNegative()">−</button>
-        <button onclick="appendMeasurement('.')">.</button>
-        <button onclick="confirmMeasurement()">OK</button>
+        <button data-key="0">0</button>
+        <button data-key=".">.</button>
+        <button data-action="negative">−</button>
+        <button data-action="clear">Clear</button>
 
-        <button onclick="appendFraction('1/8')">1/8</button>
-        <button onclick="appendFraction('1/4')">1/4</button>
-        <button onclick="appendFraction('3/8')">3/8</button>
-        <button onclick="appendFraction('1/2')">1/2</button>
+        <button data-fraction="1/8">1/8</button>
+        <button data-fraction="1/4">1/4</button>
+        <button data-fraction="3/8">3/8</button>
+        <button data-fraction="1/2">1/2</button>
 
-        <button onclick="appendFraction('5/8')">5/8</button>
-        <button onclick="appendFraction('3/4')">3/4</button>
-        <button onclick="appendFraction('7/8')">7/8</button>
-        <button onclick="measurementClear()">Clear</button>
-
-        <button onclick="cancelMeasurement()" style="grid-column: 1 / -1;">Cancel</button>
+        <button data-fraction="5/8">5/8</button>
+        <button data-fraction="3/4">3/4</button>
+        <button data-fraction="7/8">7/8</button>
+        <button data-action="confirm" class="primaryButton">OK</button>
       </div>
 
-      <div class="smallHint">
-        Use the custom keypad only. The iPad keyboard will not open. Negative values are supported.
-      </div>
+      <button id="cancelMeasurementBtn" class="fullWidthButton" type="button">Cancel</button>
     </div>
   </div>
 
-  <div id="dataTypeBackdrop" class="modalBackdrop">
+  <div id="dataTypeModal" class="modalBackdrop hidden">
     <div class="modalCard">
-      <div class="modalTitle">Add Data Type</div>
+      <h2>Add Data Type</h2>
 
       <label>
         Name
         <input id="dataTypeNameInput" type="text" value="New Data">
       </label>
 
-      <div style="margin-top:12px;">
-        <label>
-          Color
-          <input id="dataTypeColorInput" type="color" value="#000000">
-        </label>
-      </div>
+      <label>
+        Color
+        <input id="dataTypeColorInput" type="color" value="#000000">
+      </label>
 
       <div class="modalActions">
-        <button onclick="cancelAddDataType()">Cancel</button>
-        <button onclick="confirmAddDataType()">Add</button>
+        <button id="cancelDataTypeBtn" type="button">Cancel</button>
+        <button id="confirmDataTypeBtn" class="primaryButton" type="button">Add</button>
       </div>
     </div>
   </div>
 
-  <div id="sideBackdrop" class="modalBackdrop">
+  <div id="sideModal" class="modalBackdrop hidden">
     <div class="modalCard">
-      <div class="modalTitle">Assign Side</div>
-      <div>
-        Change only this point. Other point-side assignments stay frozen.
-      </div>
+      <h2>Assign Side</h2>
+      <p>Only this point changes side. Other points remain fixed.</p>
 
       <div class="sideButtons">
-        <button onclick="assignContextPointSide('N')">N</button>
-        <button onclick="assignContextPointSide('E')">E</button>
-        <button onclick="assignContextPointSide('S')">S</button>
-        <button onclick="assignContextPointSide('W')">W</button>
+        <button data-side="N">N</button>
+        <button data-side="E">E</button>
+        <button data-side="S">S</button>
+        <button data-side="W">W</button>
       </div>
 
-      <div class="modalActions">
-        <button onclick="closeAssignSideModal()">Cancel</button>
-      </div>
+      <button id="cancelSideBtn" class="fullWidthButton" type="button">Cancel</button>
     </div>
   </div>
 
-  <script>
-    "use strict";
-
-    const DEFAULT_DATA_TYPES = [
-      { id: "data1", name: "测量落差", color: "#0066ff", counter: 1, export: true, ordered: false, direction: "clockwise" },
-      { id: "data2", name: "Embed 距离", color: "#ff0000", counter: 1, export: true, ordered: false, direction: "clockwise" },
-      { id: "data3", name: "二次测量Embed距离", color: "#00aa00", counter: 1, export: true, ordered: false, direction: "clockwise" },
-      { id: "data4", name: "完成后立柱测量尺寸", color: "#8000ff", counter: 1, export: true, ordered: false, direction: "clockwise" }
-    ];
-
-    let points = [];
-    let dataTypes = structuredCloneSafe(DEFAULT_DATA_TYPES);
-
-    let pointMode = "lock";
-    let commentTool = "none";
-    let zoomLevel = 1;
-
-    let movingPoint = null;
-    let contextPoint = null;
-    let suppressNextClick = false;
-
-    let isDraggingPoint = false;
-    let draggedPoint = null;
-    let dragStartX = 0;
-    let dragStartY = 0;
-
-    let isDrawingComment = false;
-    let lastCommentX = 0;
-    let lastCommentY = 0;
-    let commentImageData = "";
-    let commentBeforeStroke = "";
-
-    let measurementCallback = null;
-    let showOrderLabels = false;
-
-    let undoStack = [];
-    let redoStack = [];
-
-    const fileInput = document.getElementById("fileInput");
-    const dataSelect = document.getElementById("dataSelect");
-    const addBtn = document.getElementById("addBtn");
-    const lockBtn = document.getElementById("lockBtn");
-    const penBtn = document.getElementById("penBtn");
-    const eraserBtn = document.getElementById("eraserBtn");
-    const previewToggleBtn = document.getElementById("previewToggleBtn");
-    const statusText = document.getElementById("status");
-
-    const drawingWrapper = document.getElementById("drawingWrapper");
-    const drawingArea = document.getElementById("drawingArea");
-    const drawing = document.getElementById("drawing");
-    const pdfCanvas = document.getElementById("pdfCanvas");
-    const commentCanvas = document.getElementById("commentCanvas");
-
-    const contextMenu = document.getElementById("contextMenu");
-
-    const measurementBackdrop = document.getElementById("measurementBackdrop");
-    const measurementTitle = document.getElementById("measurementTitle");
-    const measurementInput = document.getElementById("measurementInput");
-
-    const dataTypeBackdrop = document.getElementById("dataTypeBackdrop");
-    const dataTypeNameInput = document.getElementById("dataTypeNameInput");
-    const dataTypeColorInput = document.getElementById("dataTypeColorInput");
-
-    const sideBackdrop = document.getElementById("sideBackdrop");
-
-    pdfjsLib.GlobalWorkerOptions.workerSrc =
-      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-
-    renderDataSelect();
-    setPointMode("lock");
-    updatePreviewButton();
-
-    measurementInput.addEventListener("input", function () {
-      this.value = this.value.replace(/[^0-9./\-\s]/g, "");
-    });
-
-    dataSelect.addEventListener("change", handleDataSelectChange);
-
-    fileInput.addEventListener("change", function (event) {
-      const file = event.target.files?.[0];
-      if (!file) return;
-
-      resetDrawingSession();
-
-      if (file.type === "application/pdf") {
-        loadPDF(file);
-      } else if (file.type.startsWith("image/")) {
-        loadImage(file);
-      } else {
-        alert("Please choose a PDF or image file.");
-      }
-    });
-
-    function structuredCloneSafe(value) {
-      return JSON.parse(JSON.stringify(value));
-    }
-
-    function loadImage(file) {
-      const reader = new FileReader();
-
-      reader.onerror = function () {
-        alert("Could not read the image file.");
-      };
-
-      reader.onload = function (event) {
-        drawing.onload = function () {
-          drawingArea.style.width = drawing.naturalWidth + "px";
-          drawingArea.style.height = drawing.naturalHeight + "px";
-          setupCommentCanvas(drawing.naturalWidth, drawing.naturalHeight);
-          statusText.textContent = "Image loaded.";
-        };
-
-        drawing.src = event.target.result;
-        drawing.style.display = "block";
-        pdfCanvas.style.display = "none";
-      };
-
-      reader.readAsDataURL(file);
-    }
-
-    function loadPDF(file) {
-      const reader = new FileReader();
-
-      reader.onerror = function () {
-        alert("Could not read the PDF file.");
-      };
-
-      reader.onload = async function (event) {
-        try {
-          const typedArray = new Uint8Array(event.target.result);
-          const pdf = await pdfjsLib.getDocument(typedArray).promise;
-          const page = await pdf.getPage(1);
-
-          const renderScale = 5;
-          const viewport = page.getViewport({ scale: renderScale });
-          const context = pdfCanvas.getContext("2d");
-
-          pdfCanvas.width = Math.round(viewport.width);
-          pdfCanvas.height = Math.round(viewport.height);
-
-          drawingArea.style.width = pdfCanvas.width + "px";
-          drawingArea.style.height = pdfCanvas.height + "px";
-
-          drawing.style.display = "none";
-          pdfCanvas.style.display = "block";
-
-          await page.render({
-            canvasContext: context,
-            viewport
-          }).promise;
-
-          setupCommentCanvas(pdfCanvas.width, pdfCanvas.height);
-          statusText.textContent =
-            "PDF page 1 loaded. Add points in any measuring order.";
-        } catch (error) {
-          console.error(error);
-          alert("The PDF could not be opened.");
-        }
-      };
-
-      reader.readAsArrayBuffer(file);
-    }
-
-    function setupCommentCanvas(width, height) {
-      commentCanvas.width = width;
-      commentCanvas.height = height;
-      commentCanvas.style.width = width + "px";
-      commentCanvas.style.height = height + "px";
-
-      if (commentImageData) {
-        restoreCommentImage(commentImageData);
-      }
-    }
-
-    function renderDataSelect(selectedId = null) {
-      const previousValue = selectedId || dataSelect.value;
-      dataSelect.innerHTML = "";
-
-      dataTypes.forEach(function (dataType) {
-        const option = document.createElement("option");
-        option.value = dataType.id;
-
-        const pointCount = points.filter(point => point.dataId === dataType.id).length;
-        const statusMark = pointCount > 0
-          ? (dataType.ordered ? "✓ " : "○ ")
-          : "";
-
-        option.textContent = statusMark + dataType.name;
-        dataSelect.appendChild(option);
-      });
-
-      const addOption = document.createElement("option");
-      addOption.value = "__add_data_type__";
-      addOption.textContent = "+ Add Data Type";
-      dataSelect.appendChild(addOption);
-
-      if (dataTypes.some(item => item.id === previousValue)) {
-        dataSelect.value = previousValue;
-      } else if (dataTypes.length > 0) {
-        dataSelect.value = dataTypes[0].id;
-      }
-    }
-
-    function handleDataSelectChange() {
-      if (dataSelect.value !== "__add_data_type__") return;
-
-      dataTypeNameInput.value = "New Data";
-      dataTypeColorInput.value = "#000000";
-      dataTypeBackdrop.style.display = "flex";
-      setTimeout(() => dataTypeNameInput.focus(), 50);
-    }
-
-    function cancelAddDataType() {
-      dataTypeBackdrop.style.display = "none";
-      renderDataSelect(dataTypes[0]?.id);
-    }
-
-    function confirmAddDataType() {
-      const name = dataTypeNameInput.value.trim();
-
-      if (!name) {
-        alert("Enter a data type name.");
-        return;
-      }
-
-      const newType = {
-        id: "data_" + Date.now(),
-        name,
-        color: dataTypeColorInput.value || "#000000",
-        counter: 1,
-        export: true,
-        ordered: false,
-        direction: "clockwise"
-      };
-
-      dataTypes.push(newType);
-      dataTypeBackdrop.style.display = "none";
-      renderDataSelect(newType.id);
-    }
-
-    function getDataType(id) {
-      return dataTypes.find(item => item.id === id);
-    }
-
-    function setPointMode(mode) {
-      pointMode = mode;
-      movingPoint = null;
-      clearPointSelection();
-      hideContextMenu();
-
-      if (mode === "add") {
-        statusText.textContent =
-          "Add Points ON: tap the drawing, enter measurement, then confirm.";
-      } else {
-        statusText.textContent =
-          "Lock Points ON: blank taps do not add points.";
-      }
-
-      updateToolButtons();
-    }
-
-    function toggleCommentTool(tool) {
-      commentTool = commentTool === tool ? "none" : tool;
-
-      if (commentTool === "pen") {
-        statusText.textContent =
-          "Pen ON: Apple Pencil draws. Finger remains available for scrolling.";
-      } else if (commentTool === "eraser") {
-        statusText.textContent =
-          "Eraser ON: Apple Pencil erases. Finger remains available for scrolling.";
-      } else {
-        statusText.textContent =
-          pointMode === "add"
-            ? "Add Points ON."
-            : "Lock Points ON.";
-      }
-
-      updateToolButtons();
-    }
-
-    function updateToolButtons() {
-      [addBtn, lockBtn, penBtn, eraserBtn].forEach(button => {
-        button.classList.remove("activeTool");
-      });
-
-      if (pointMode === "add") addBtn.classList.add("activeTool");
-      if (pointMode === "lock") lockBtn.classList.add("activeTool");
-      if (commentTool === "pen") penBtn.classList.add("activeTool");
-      if (commentTool === "eraser") eraserBtn.classList.add("activeTool");
-    }
-
-    drawingArea.addEventListener("click", function (event) {
-      if (suppressNextClick) {
-        suppressNextClick = false;
-        return;
-      }
-
-      if (event.target.classList.contains("point")) return;
-      if (commentTool !== "none") return;
-
-      const position = getDrawingPosition(event);
-
-      if (movingPoint) {
-        movePointTo(movingPoint, position.x, position.y);
-        movingPoint = null;
-        clearPointSelection();
-        return;
-      }
-
-      if (pointMode !== "add") return;
-
-      openMeasurementModal(
-        "",
-        "Enter Measurement",
-        function (value) {
-          const cleanValue = value.trim();
-          if (!cleanValue) return;
-
-          addMeasuredPoint(position.x, position.y, cleanValue);
-        }
-      );
-    });
-
-    function addMeasuredPoint(x, y, measurement) {
-      const dataType = getDataType(dataSelect.value);
-      if (!dataType) {
-        alert("Select a valid data type.");
-        return;
-      }
-
-      const point = {
-        uid: "point_" + Date.now() + "_" + Math.random().toString(16).slice(2),
-        dataId: dataType.id,
-        number: dataType.counter,
-        x,
-        y,
-        measurement,
-        moved: false,
-        moveDistance: 0,
-        assignedSide: "",
-        assignedSeq: ""
-      };
-
-      points.push(point);
-      dataType.counter += 1;
-      dataType.ordered = false;
-
-      pushUndo({
-        type: "add",
-        point
-      });
-
-      createPointElement(point);
-
-      renderDataSelect(dataType.id);
-
-      statusText.textContent =
-        dataType.name + ": " + measurement + " added. Ordering needs review.";
-    }
-
-    function createPointElement(point) {
-      removePointElement(point.uid);
-
-      const element = document.createElement("div");
-      element.className = "point";
-      element.dataset.uid = point.uid;
-      drawingArea.appendChild(element);
-
-      element.addEventListener("click", function (event) {
-        event.stopPropagation();
-
-        if (commentTool !== "none" || isDraggingPoint) return;
-        editPoint(point);
-      });
-
-      element.addEventListener("contextmenu", function (event) {
-        event.preventDefault();
-        event.stopPropagation();
-        showContextMenu(event.clientX, event.clientY, point);
-      });
-
-      let longPressTimer = null;
-
-      element.addEventListener("touchstart", function (event) {
-        longPressTimer = setTimeout(function () {
-          suppressNextClick = true;
-          const touch = event.touches[0];
-          showContextMenu(touch.clientX, touch.clientY, point);
-        }, 650);
-      }, { passive: true });
-
-      element.addEventListener("touchmove", function () {
-        clearTimeout(longPressTimer);
-      }, { passive: true });
-
-      element.addEventListener("touchend", function () {
-        clearTimeout(longPressTimer);
-      });
-
-      element.addEventListener("pointerdown", function (event) {
-        if (movingPoint !== point) return;
-
-        event.preventDefault();
-        event.stopPropagation();
-
-        isDraggingPoint = true;
-        draggedPoint = point;
-        dragStartX = point.x;
-        dragStartY = point.y;
-
-        try {
-          element.setPointerCapture(event.pointerId);
-        } catch (_) {}
-      });
-
-      element.addEventListener("pointermove", function (event) {
-        if (!isDraggingPoint || draggedPoint !== point) return;
-
-        event.preventDefault();
-
-        const position = getDrawingPosition(event);
-        point.x = position.x;
-        point.y = position.y;
-        updatePointElement(point);
-      });
-
-      element.addEventListener("pointerup", function (event) {
-        if (!isDraggingPoint || draggedPoint !== point) return;
-
-        event.preventDefault();
-
-        const newX = point.x;
-        const newY = point.y;
-        const distance = Math.hypot(newX - dragStartX, newY - dragStartY);
-
-        isDraggingPoint = false;
-        draggedPoint = null;
-        movingPoint = null;
-        clearPointSelection();
-
-        if (distance > 0) {
-          point.moved = true;
-          point.moveDistance += distance;
-
-          pushUndo({
-            type: "move",
-            point,
-            oldX: dragStartX,
-            oldY: dragStartY,
-            newX,
-            newY,
-            distance
-          });
-        }
-      });
-
-      updatePointElement(point);
-    }
-
-    function updatePointElement(point) {
-      const element = document.querySelector(`[data-uid="${point.uid}"]`);
-      if (!element) return;
-
-      const dataType = getDataType(point.dataId);
-      const measurement = point.measurement || String(point.number);
-
-      element.textContent =
-        showOrderLabels && point.assignedSide && point.assignedSeq
-          ? `${point.assignedSide}${point.assignedSeq} ${measurement}`
-          : measurement;
-
-      element.style.left = point.x + "px";
-      element.style.top = point.y + "px";
-      element.style.color = dataType?.color || "black";
-      element.style.display = dataType?.export === false ? "none" : "block";
-    }
-
-    function refreshAllPoints() {
-      points.forEach(updatePointElement);
-    }
-
-    function editPoint(point) {
-      const oldValue = point.measurement;
-
-      openMeasurementModal(
-        point.measurement,
-        "Edit Measurement",
-        function (value) {
-          const newValue = value.trim();
-          if (!newValue || newValue === oldValue) return;
-
-          point.measurement = newValue;
-
-          pushUndo({
-            type: "edit",
-            point,
-            oldValue,
-            newValue
-          });
-
-          updatePointElement(point);
-        }
-      );
-    }
-
-    function deletePoint(point) {
-      if (!confirm("Delete this point?")) return;
-
-      points = points.filter(item => item.uid !== point.uid);
-      removePointElement(point.uid);
-
-      pushUndo({
-        type: "delete",
-        point
-      });
-
-      const dataType = getDataType(point.dataId);
-      if (dataType?.ordered) {
-        recalculateDataTypeOrder(point.dataId);
-      }
-      renderDataSelect(point.dataId);
-
-      statusText.textContent = "Point deleted.";
-    }
-
-    function removePointElement(uid) {
-      const element = document.querySelector(`[data-uid="${uid}"]`);
-      if (element) element.remove();
-    }
-
-    function showContextMenu(x, y, point) {
-      contextPoint = point;
-
-      const menuWidth = 185;
-      const menuHeight = 190;
-      const left = Math.min(x, window.innerWidth - menuWidth - 8);
-      const top = Math.min(y, window.innerHeight - menuHeight - 8);
-
-      contextMenu.style.left = Math.max(8, left) + "px";
-      contextMenu.style.top = Math.max(8, top) + "px";
-      contextMenu.style.display = "block";
-    }
-
-    function hideContextMenu() {
-      contextMenu.style.display = "none";
-    }
-
-    document.addEventListener("click", function (event) {
-      if (!contextMenu.contains(event.target)) {
-        hideContextMenu();
-      }
-    });
-
-    function contextEdit() {
-      hideContextMenu();
-      if (contextPoint) editPoint(contextPoint);
-    }
-
-    function contextMove() {
-      hideContextMenu();
-      if (!contextPoint) return;
-
-      movingPoint = contextPoint;
-      commentTool = "none";
-      updateToolButtons();
-
-      clearPointSelection();
-      const element = document.querySelector(`[data-uid="${contextPoint.uid}"]`);
-      if (element) element.classList.add("selected");
-
-      statusText.textContent =
-        "Move selected point: drag it, or tap the new position.";
-    }
-
-    function contextDelete() {
-      hideContextMenu();
-      if (contextPoint) deletePoint(contextPoint);
-    }
-
-    function openAssignSideModal() {
-      hideContextMenu();
-      if (!contextPoint) return;
-      sideBackdrop.style.display = "flex";
-    }
-
-    function closeAssignSideModal() {
-      sideBackdrop.style.display = "none";
-    }
-
-    function assignContextPointSide(side) {
-      if (!contextPoint) return;
-
-      const dataType = getDataType(contextPoint.dataId);
-      const oldSide = contextPoint.assignedSide || "";
-
-      contextPoint.assignedSide = side;
-      closeAssignSideModal();
-
-      pushUndo({
-        type: "assignSide",
-        point: contextPoint,
-        oldSide,
-        newSide: side,
-        dataId: contextPoint.dataId
-      });
-
-      if (dataType) {
-        dataType.ordered = true;
-        recalculateDataTypeOrder(dataType.id);
-      }
-
-      showOrderLabels = true;
-      updatePreviewButton();
-      refreshAllPoints();
-      renderDataSelect(contextPoint.dataId);
-
-      statusText.textContent =
-        `Point changed to ${side}. Only this data type was re-sequenced.`;
-    }
-
-    function movePointTo(point, newX, newY) {
-      const oldX = point.x;
-      const oldY = point.y;
-      const distance = Math.hypot(newX - oldX, newY - oldY);
-
-      point.x = newX;
-      point.y = newY;
-      point.moved = true;
-      point.moveDistance += distance;
-
-      pushUndo({
-        type: "move",
-        point,
-        oldX,
-        oldY,
-        newX,
-        newY,
-        distance
-      });
-
-      updatePointElement(point);
-
-      if (point.assignedSide) {
-        recalculateDataTypeOrder(point.dataId);
-      }
-    }
-
-    function clearPointSelection() {
-      document.querySelectorAll(".point.selected").forEach(element => {
-        element.classList.remove("selected");
-      });
-    }
-
-    function getDrawingPosition(event) {
-      const rect = drawingArea.getBoundingClientRect();
-
-      return {
-        x: (event.clientX - rect.left) / zoomLevel,
-        y: (event.clientY - rect.top) / zoomLevel
-      };
-    }
-
-    function openMeasurementModal(initialValue, title, callback) {
-      measurementInput.value = initialValue || "";
-      measurementTitle.textContent = title || "Enter Measurement";
-      measurementCallback = callback;
-      measurementBackdrop.style.display = "flex";
-
-      // Do not focus the input on iPad. The custom keypad is the only input method.
-      measurementInput.blur();
-    }
-
-    function appendMeasurement(value) {
-      measurementInput.value += value;
-    }
-
-    function appendFraction(value) {
-      const current = measurementInput.value;
-
-      if (current && !current.endsWith(" ")) {
-        measurementInput.value += " ";
-      }
-
-      measurementInput.value += value;
-    }
-
-    function toggleNegative() {
-      const value = measurementInput.value.trimStart();
-
-      if (value.startsWith("-")) {
-        measurementInput.value = value.slice(1);
-      } else {
-        measurementInput.value = "-" + value;
-      }
-    }
-
-    function measurementBackspace() {
-      measurementInput.value = measurementInput.value.slice(0, -1);
-    }
-
-    function measurementClear() {
-      measurementInput.value = "";
-    }
-
-    function confirmMeasurement() {
-      const value = measurementInput.value;
-      const callback = measurementCallback;
-
-      measurementBackdrop.style.display = "none";
-      measurementCallback = null;
-
-      if (callback) callback(value);
-    }
-
-    function cancelMeasurement() {
-      measurementBackdrop.style.display = "none";
-      measurementCallback = null;
-    }
-
-    function askDirection(defaultDirection = "clockwise") {
-      const answer = prompt(
-        "Type clockwise or counterclockwise:",
-        defaultDirection
-      );
-
-      if (!answer) return null;
-
-      const clean = answer.trim().toLowerCase();
-
-      if (!["clockwise", "counterclockwise"].includes(clean)) {
-        alert("Please type clockwise or counterclockwise.");
-        return null;
-      }
-
-      return clean;
-    }
-
-    function orderCurrentData() {
-      const dataId = dataSelect.value;
-      const dataType = getDataType(dataId);
-
-      if (!dataType) {
-        alert("Select a valid data type.");
-        return;
-      }
-
-      const dataPoints = points.filter(point => point.dataId === dataId);
-
-      if (dataPoints.length === 0) {
-        alert("No points exist for this data type.");
-        return;
-      }
-
-      const direction = askDirection(dataType.direction || "clockwise");
-      if (!direction) return;
-
-      dataType.direction = direction;
-
-      /*
-        Existing assigned sides stay fixed.
-        Only unassigned points are automatically classified.
-      */
-      assignMissingSidesForData(dataId);
-      dataType.ordered = true;
-      recalculateDataTypeOrder(dataId);
-
-      showOrderLabels = true;
-      updatePreviewButton();
-      refreshAllPoints();
-      renderDataSelect(dataId);
-
-      statusText.textContent =
-        `${dataType.name} ordered ${direction}. ` +
-        "Long-press a wrong point and choose Assign Side.";
-    }
-
-    function assignMissingSidesForData(dataId) {
-      const dataPoints = points.filter(point => point.dataId === dataId);
-      if (dataPoints.length === 0) return;
-
-      const bounds = getBounds(dataPoints);
-
-      dataPoints.forEach(function (point) {
-        if (!point.assignedSide) {
-          point.assignedSide = guessSide(point, bounds);
-        }
-      });
-    }
-
-    function recalculateDataTypeOrder(dataId) {
-      const dataType = getDataType(dataId);
-      if (!dataType) return;
-
-      const ordered = getOrderedPointsForData(
-        dataId,
-        dataType.direction || "clockwise"
-      );
-
-      ordered.forEach(function (item) {
-        item.point.assignedSide = item.side;
-        item.point.assignedSeq = item.seq;
-      });
-
-      points
-        .filter(point => point.dataId === dataId)
-        .forEach(updatePointElement);
-    }
-
-    function toggleOrderLabels() {
-      showOrderLabels = !showOrderLabels;
-      updatePreviewButton();
-      refreshAllPoints();
-
-      statusText.textContent = showOrderLabels
-        ? "Order labels shown for every ordered data type."
-        : "Order labels hidden. PDF export will show measurements only.";
-    }
-
-    function updatePreviewButton() {
-      previewToggleBtn.textContent = showOrderLabels
-        ? "Hide Order Labels"
-        : "Show Order Labels";
-
-      previewToggleBtn.classList.toggle("activeTool", showOrderLabels);
-    }
-
-    function getBounds(dataPoints) {
-      const xs = dataPoints.map(point => point.x);
-      const ys = dataPoints.map(point => point.y);
-
-      return {
-        minX: Math.min(...xs),
-        maxX: Math.max(...xs),
-        minY: Math.min(...ys),
-        maxY: Math.max(...ys)
-      };
-    }
-
-    function guessSide(point, bounds) {
-      const distances = {
-        N: Math.abs(point.y - bounds.minY),
-        E: Math.abs(point.x - bounds.maxX),
-        S: Math.abs(point.y - bounds.maxY),
-        W: Math.abs(point.x - bounds.minX)
-      };
-
-      return Object.entries(distances)
-        .sort((a, b) => a[1] - b[1])[0][0];
-    }
-
-    function getOrderedPointsForData(dataId, direction) {
-      const dataPoints = points.filter(point => point.dataId === dataId);
-      if (dataPoints.length === 0) return [];
-
-      const groups = {
-        N: [],
-        E: [],
-        S: [],
-        W: []
-      };
-
-      dataPoints.forEach(function (point) {
-        const side = point.assignedSide || "N";
-        groups[side].push(point);
-      });
-
-      if (direction === "clockwise") {
-        groups.N.sort((a, b) => a.x - b.x);
-        groups.E.sort((a, b) => a.y - b.y);
-        groups.S.sort((a, b) => b.x - a.x);
-        groups.W.sort((a, b) => b.y - a.y);
-
-        return buildOrderedList(groups, ["N", "E", "S", "W"]);
-      }
-
-      groups.N.sort((a, b) => b.x - a.x);
-      groups.W.sort((a, b) => a.y - b.y);
-      groups.S.sort((a, b) => a.x - b.x);
-      groups.E.sort((a, b) => b.y - a.y);
-
-      return buildOrderedList(groups, ["N", "W", "S", "E"]);
-    }
-
-    function buildOrderedList(groups, order) {
-      const result = [];
-
-      order.forEach(function (side) {
-        groups[side].forEach(function (point, index) {
-          result.push({
-            point,
-            side,
-            seq: index + 1
-          });
-        });
-      });
-
-      return result;
-    }
-
-    function pushUndo(action) {
-      undoStack.push(action);
-      redoStack = [];
-    }
-
-    function undo() {
-      const action = undoStack.pop();
-      if (!action) return;
-
-      if (action.type === "add") {
-        points = points.filter(point => point.uid !== action.point.uid);
-        removePointElement(action.point.uid);
-
-        const dataType = getDataType(action.point.dataId);
-        if (dataType) {
-          dataType.counter = Math.max(1, dataType.counter - 1);
-          dataType.ordered = false;
-        }
-        renderDataSelect(action.point.dataId);
-      }
-
-      if (action.type === "edit") {
-        action.point.measurement = action.oldValue;
-        updatePointElement(action.point);
-      }
-
-      if (action.type === "move") {
-        action.point.x = action.oldX;
-        action.point.y = action.oldY;
-        action.point.moveDistance = Math.max(
-          0,
-          action.point.moveDistance - action.distance
-        );
-        action.point.moved = action.point.moveDistance > 0;
-        updatePointElement(action.point);
-
-        if (action.point.assignedSide) {
-          recalculateDataTypeOrder(action.point.dataId);
-        }
-      }
-
-      if (action.type === "delete") {
-        points.push(action.point);
-        createPointElement(action.point);
-
-        if (action.point.assignedSide) {
-          recalculateDataTypeOrder(action.point.dataId);
-        }
-      }
-
-      if (action.type === "assignSide") {
-        action.point.assignedSide = action.oldSide;
-        recalculateDataTypeOrder(action.dataId);
-        renderDataSelect(action.dataId);
-      }
-
-      if (action.type === "comment") {
-        restoreCommentImage(action.before);
-      }
-
-      redoStack.push(action);
-    }
-
-    function redo() {
-      const action = redoStack.pop();
-      if (!action) return;
-
-      if (action.type === "add") {
-        points.push(action.point);
-        createPointElement(action.point);
-
-        const dataType = getDataType(action.point.dataId);
-        if (dataType) {
-          dataType.counter += 1;
-          dataType.ordered = false;
-        }
-        renderDataSelect(action.point.dataId);
-      }
-
-      if (action.type === "edit") {
-        action.point.measurement = action.newValue;
-        updatePointElement(action.point);
-      }
-
-      if (action.type === "move") {
-        action.point.x = action.newX;
-        action.point.y = action.newY;
-        action.point.moved = true;
-        action.point.moveDistance += action.distance;
-        updatePointElement(action.point);
-
-        if (action.point.assignedSide) {
-          recalculateDataTypeOrder(action.point.dataId);
-        }
-      }
-
-      if (action.type === "delete") {
-        points = points.filter(point => point.uid !== action.point.uid);
-        removePointElement(action.point.uid);
-      }
-
-      if (action.type === "assignSide") {
-        action.point.assignedSide = action.newSide;
-        recalculateDataTypeOrder(action.dataId);
-        renderDataSelect(action.dataId);
-      }
-
-      if (action.type === "comment") {
-        restoreCommentImage(action.after);
-      }
-
-      undoStack.push(action);
-    }
-
-    commentCanvas.addEventListener("pointerdown", function (event) {
-      if (commentTool === "none") return;
-
-      /*
-        On iPad, Apple Pencil typically reports pointerType === "pen".
-        Finger touches are left for scrolling and pinch zoom.
-        Mouse drawing remains enabled for desktop testing.
-      */
-      if (!["pen", "mouse"].includes(event.pointerType)) return;
-
-      event.preventDefault();
-
-      try {
-        commentCanvas.setPointerCapture(event.pointerId);
-      } catch (_) {}
-
-      commentBeforeStroke = commentCanvas.toDataURL();
-      isDrawingComment = true;
-
-      const position = getCanvasPosition(event);
-      lastCommentX = position.x;
-      lastCommentY = position.y;
-    });
-
-    commentCanvas.addEventListener("pointermove", function (event) {
-      if (!isDrawingComment || commentTool === "none") return;
-      if (!["pen", "mouse"].includes(event.pointerType)) return;
-
-      event.preventDefault();
-
-      const position = getCanvasPosition(event);
-      const context = commentCanvas.getContext("2d");
-
-      context.lineCap = "round";
-      context.lineJoin = "round";
-
-      if (commentTool === "eraser") {
-        context.globalCompositeOperation = "destination-out";
-        context.lineWidth = 36;
-      } else {
-        context.globalCompositeOperation = "source-over";
-        context.strokeStyle = "#ff0000";
-        context.lineWidth = 5;
-      }
-
-      context.beginPath();
-      context.moveTo(lastCommentX, lastCommentY);
-      context.lineTo(position.x, position.y);
-      context.stroke();
-
-      lastCommentX = position.x;
-      lastCommentY = position.y;
-    });
-
-    commentCanvas.addEventListener("pointerup", finishCommentStroke);
-    commentCanvas.addEventListener("pointercancel", finishCommentStroke);
-
-    function finishCommentStroke() {
-      if (!isDrawingComment) return;
-
-      isDrawingComment = false;
-      const after = commentCanvas.toDataURL();
-
-      pushUndo({
-        type: "comment",
-        before: commentBeforeStroke,
-        after
-      });
-
-      commentImageData = after;
-    }
-
-    function getCanvasPosition(event) {
-      const rect = commentCanvas.getBoundingClientRect();
-
-      return {
-        x: (event.clientX - rect.left) / zoomLevel,
-        y: (event.clientY - rect.top) / zoomLevel
-      };
-    }
-
-    function restoreCommentImage(dataURL) {
-      const context = commentCanvas.getContext("2d");
-      context.clearRect(0, 0, commentCanvas.width, commentCanvas.height);
-
-      if (!dataURL) {
-        commentImageData = "";
-        return;
-      }
-
-      const image = new Image();
-
-      image.onload = function () {
-        context.drawImage(image, 0, 0);
-        commentImageData = dataURL;
-      };
-
-      image.src = dataURL;
-    }
-
-    drawingWrapper.addEventListener("wheel", function (event) {
-      if (!event.ctrlKey && !event.metaKey) return;
-
-      event.preventDefault();
-
-      zoomLevel += event.deltaY < 0 ? 0.1 : -0.1;
-      zoomLevel = Math.max(0.3, Math.min(5, zoomLevel));
-      applyZoom();
-    }, { passive: false });
-
-    function applyZoom() {
-      drawingArea.style.transform = `scale(${zoomLevel})`;
-      statusText.textContent =
-        "Zoom: " + Math.round(zoomLevel * 100) + "%";
-    }
-
-    function cleanCSV(value) {
-      return '"' + String(value ?? "").replace(/"/g, '""') + '"';
-    }
-
-    function exportCSV() {
-      const exportTypes = dataTypes.filter(dataType => {
-        return dataType.export &&
-          points.some(point => point.dataId === dataType.id);
-      });
-
-      const unorderedTypes = exportTypes.filter(dataType => !dataType.ordered);
-
-      if (unorderedTypes.length > 0) {
-        alert(
-          "Order these data types before exporting:\n\n" +
-          unorderedTypes.map(dataType => "• " + dataType.name).join("\n")
-        );
-        return;
-      }
-
-      /*
-        Export reads each data type's saved direction and final assigned
-        side/sequence. It does not reclassify points.
-      */
-      exportTypes.forEach(function (dataType) {
-        recalculateDataTypeOrder(dataType.id);
-      });
-
-      const fileNameInput = prompt(
-        "Enter CSV file name:",
-        "measurements"
-      );
-
-      if (!fileNameInput) return;
-
-      const fileName = fileNameInput.toLowerCase().endsWith(".csv")
-        ? fileNameInput
-        : fileNameInput + ".csv";
-
-      const grouped = {};
-
-      exportTypes.forEach(function (dataType) {
-        grouped[dataType.id] = getOrderedPointsForData(
-          dataType.id,
-          dataType.direction || "clockwise"
-        );
-      });
-
-      const maxRows = Math.max(
-        0,
-        ...exportTypes.map(dataType => grouped[dataType.id].length)
-      );
-
-      const headers = [];
-
-      exportTypes.forEach(function (dataType) {
-        headers.push(dataType.name + " Side");
-        headers.push(dataType.name + " Seq");
-        headers.push(dataType.name + " Measurement");
-        headers.push(dataType.name + " Warning");
-      });
-
-      let csv = headers.map(cleanCSV).join(",") + "\n";
-
-      for (let rowIndex = 0; rowIndex < maxRows; rowIndex += 1) {
-        const row = [];
-
-        exportTypes.forEach(function (dataType) {
-          const item = grouped[dataType.id][rowIndex];
-
-          if (!item) {
-            row.push("", "", "", "");
-            return;
-          }
-
-          const point = item.point;
-
-          row.push(item.side);
-          row.push(item.seq);
-          row.push(point.measurement);
-
-          if (point.moveDistance > 80) {
-            row.push("Point moved a large distance; check order");
-          } else if (point.moved) {
-            row.push("Point moved");
-          } else {
-            row.push("");
-          }
-        });
-
-        csv += row.map(cleanCSV).join(",") + "\n";
-      }
-
-      const blob = new Blob(
-        ["\ufeff" + csv],
-        { type: "text/csv;charset=utf-8" }
-      );
-
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-
-      link.href = url;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-
-      URL.revokeObjectURL(url);
-
-      statusText.textContent =
-        "CSV exported. Hide Order Labels before exporting a measurement-only PDF.";
-    }
-
-    async function exportPDF() {
-      const fileNameInput = prompt(
-        "Enter PDF file name:",
-        "marked_drawing"
-      );
-
-      if (!fileNameInput) return;
-
-      const fileName = fileNameInput.toLowerCase().endsWith(".pdf")
-        ? fileNameInput
-        : fileNameInput + ".pdf";
-
-      const originalTransform = drawingArea.style.transform;
-      drawingArea.style.transform = "scale(1)";
-
-      const options = {
-        margin: 0,
-        filename: fileName,
-        image: {
-          type: "jpeg",
-          quality: 1
-        },
-        html2canvas: {
-          scale: 4,
-          useCORS: true,
-          backgroundColor: "#ffffff"
-        },
-        jsPDF: {
-          unit: "px",
-          format: [
-            drawingArea.offsetWidth,
-            drawingArea.offsetHeight
-          ],
-          orientation:
-            drawingArea.offsetWidth > drawingArea.offsetHeight
-              ? "landscape"
-              : "portrait"
-        }
-      };
-
-      try {
-        await html2pdf()
-          .set(options)
-          .from(drawingArea)
-          .save();
-      } catch (error) {
-        console.error(error);
-        alert("PDF export failed.");
-      } finally {
-        drawingArea.style.transform = originalTransform;
-      }
-    }
-
-    function resetDrawingSession() {
-      points = [];
-      dataTypes = structuredCloneSafe(DEFAULT_DATA_TYPES);
-
-      pointMode = "lock";
-      commentTool = "none";
-      zoomLevel = 1;
-
-      movingPoint = null;
-      contextPoint = null;
-
-      isDraggingPoint = false;
-      draggedPoint = null;
-
-      isDrawingComment = false;
-      commentImageData = "";
-      commentBeforeStroke = "";
-
-      showOrderLabels = false;
-
-      undoStack = [];
-      redoStack = [];
-
-      document.querySelectorAll(".point").forEach(element => element.remove());
-
-      if (commentCanvas.width > 0) {
-        commentCanvas
-          .getContext("2d")
-          .clearRect(0, 0, commentCanvas.width, commentCanvas.height);
-      }
-
-      drawingArea.style.transform = "scale(1)";
-      renderDataSelect();
-      updateToolButtons();
-      updatePreviewButton();
-      hideContextMenu();
-    }
-  </script>
+  <!-- Script order matters -->
+  <script src="db.js"></script>
+  <script src="workspace.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>
