@@ -356,6 +356,10 @@ const Workspace = (() => {
       .addEventListener("click", toggleMeasurementNegative);
 
     els.measurementModal
+      .querySelector('[data-action="clear"]')
+      .addEventListener("click", clearMeasurement);
+
+    els.measurementModal
       .querySelector('[data-action="confirm"]')
       .addEventListener("click", confirmMeasurement);
 
@@ -1619,6 +1623,10 @@ const Workspace = (() => {
 
   function measurementBackspace() {
     setMeasurementRawValue(measurementRawValue.slice(0, -1));
+  }
+
+  function clearMeasurement() {
+    setMeasurementRawValue("");
   }
 
   function toggleMeasurementNegative() {

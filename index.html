@@ -277,28 +277,29 @@
           <button data-key="7">7</button>
           <button data-key="8">8</button>
           <button data-key="9">9</button>
-          <button data-action="backspace" class="operatorButton" title="Backspace">⌫</button>
+          <button data-action="backspace" class="operatorButton deleteButton tallDelete" title="Backspace">⌫</button>
 
           <button data-key="4">4</button>
           <button data-key="5">5</button>
           <button data-key="6">6</button>
-          <button data-denominator="4" class="fractionButton">/4</button>
 
           <button data-key="1">1</button>
           <button data-key="2">2</button>
           <button data-key="3">3</button>
-          <button data-denominator="8" class="fractionButton">/8</button>
+          <button data-action="clear" class="clearButton" title="Clear all">Clear</button>
 
-          <button data-key="0">0</button>
           <button data-key="/" class="operatorButton">/</button>
+          <button data-key="0">0</button>
           <button data-action="negative" class="operatorButton">−</button>
+          <button data-key="X" id="missingValueBtn" class="missingValueButton" type="button">X</button>
+
+          <button data-denominator="2" class="fractionButton">/2</button>
+          <button data-denominator="4" class="fractionButton">/4</button>
+          <button data-denominator="8" class="fractionButton">/8</button>
           <button data-denominator="16" class="fractionButton">/16</button>
         </div>
 
-        <div class="measurementUtilityRow">
-          <button data-key=" " class="spaceButton">SPACE</button>
-          <button data-key="X" id="missingValueBtn" class="missingValueButton" type="button">X</button>
-        </div>
+        <button data-key=" " class="spaceButton">SPACE</button>
 
         <div class="measurementActions">
           <button id="cancelMeasurementBtn" type="button">Cancel</button>

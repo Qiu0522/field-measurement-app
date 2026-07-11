@@ -1062,6 +1062,33 @@ button {
 .measurementUtilityRow { display:grid; grid-template-columns:minmax(0,1fr) 64px; gap:10px; align-items:stretch; }
 .measurementUtilityRow .spaceButton { margin-top:10px; }
 .missingValueButton { min-height:60px; margin-top:10px; border:2px solid var(--missing-color, #1f6feb); border-radius:10px; background:#fff; color:var(--missing-color, #1f6feb); font-size:24px !important; font-weight:800; }
+
+/* Backspace spans two rows (top-right), Clear and X sit below it. */
+.v6MainGrid .tallDelete { grid-row: span 2; }
+
+.v6MainGrid .clearButton {
+  border: 1px solid #dcb0ad;
+  border-radius: 10px;
+  background: #fdecea;
+  color: #a3312c;
+  font-size: 20px;
+  font-weight: 650;
+  touch-action: manipulation;
+}
+
+.v6MainGrid .clearButton:active {
+  transform: scale(0.97);
+  background: #f6d6d3;
+}
+
+/* X now lives inside the main grid: drop the old row spacing, keep its look. */
+.v6MainGrid .missingValueButton {
+  margin-top: 0;
+  background: #fff;
+  border: 2px solid var(--missing-color, #1f6feb);
+  color: var(--missing-color, #1f6feb);
+  font-weight: 800;
+}
 .textCard input, .textCard select { width:100%; min-height:46px; margin-top:6px; }
 
 .v6Keypad .measurementActions {
