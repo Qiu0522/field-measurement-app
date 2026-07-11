@@ -1262,3 +1262,9 @@ button {
   border-radius: 6px;
   background: rgba(39, 110, 241, 0.15);
 }
+
+/* Adjustable measurement label size (set via --label-font-size on #drawingArea).
+   Higher specificity than the base .point rule so it wins regardless of order. */
+#drawingArea .point {
+  font-size: var(--label-font-size, 30px);
+}

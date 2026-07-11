@@ -19,6 +19,11 @@ const Workspace = (() => {
   let brushWidth = 5;
   let showOrderLabels = false;
   let zoomLevel = 1;
+  let labelFontSize = 30;
+
+  let pinchActive = false;
+  let pinchStartDist = 0;
+  let pinchStartZoom = 1;
 
   let contextPoint = null;
   let movingPoint = null;
@@ -79,6 +84,9 @@ const Workspace = (() => {
     els.zoomOutBtn = document.getElementById("zoomOutBtn");
     els.zoomInBtn = document.getElementById("zoomInBtn");
     els.zoomDisplay = document.getElementById("zoomDisplay");
+    els.labelSizeDownBtn = document.getElementById("labelSizeDownBtn");
+    els.labelSizeUpBtn = document.getElementById("labelSizeUpBtn");
+    els.labelSizeDisplay = document.getElementById("labelSizeDisplay");
     els.fitBtn = document.getElementById("fitBtn");
     els.orderBtn = document.getElementById("orderBtn");
     els.batchAssignBtn = document.getElementById("batchAssignBtn");
@@ -281,6 +289,63 @@ const Workspace = (() => {
     els.zoomDisplay.addEventListener("click", () => resetZoom());
     els.fitBtn.addEventListener("click", fitDrawing);
 
+    els.labelSizeDownBtn.addEventListener("click", () => changeLabelFontSize(-2));
+    els.labelSizeUpBtn.addEventListener("click", () => changeLabelFontSize(2));
+    els.labelSizeDisplay.addEventListener("click", resetLabelFontSize);
+
+    /*
+      Two-finger pinch zooms the drawing only. The toolbar and page stay put
+      because the toolbar lives outside the scroll area and page zoom is
+      disabled in the viewport meta tag.
+    */
+    els.drawingWrapper.addEventListener("touchstart", event => {
+      if (event.touches.length !== 2) return;
+      pinchActive = true;
+      abortActiveInteraction();
+      pinchStartDist = touchDistance(event.touches[0], event.touches[1]);
+      pinchStartZoom = zoomLevel;
+      event.preventDefault();
+    }, { passive: false });
+
+    els.drawingWrapper.addEventListener("touchmove", event => {
+      if (!pinchActive || event.touches.length !== 2) return;
+      event.preventDefault();
+
+      const wrapper = els.drawingWrapper;
+      const rect = wrapper.getBoundingClientRect();
+      const dist = touchDistance(event.touches[0], event.touches[1]);
+      if (pinchStartDist <= 0) return;
+
+      const oldZoom = zoomLevel;
+      const newZoom = Math.max(
+        0.3,
+        Math.min(5, Math.round(pinchStartZoom * (dist / pinchStartDist) * 100) / 100)
+      );
+      if (newZoom === oldZoom) return;
+
+      const midX = (event.touches[0].clientX + event.touches[1].clientX) / 2 - rect.left;
+      const midY = (event.touches[0].clientY + event.touches[1].clientY) / 2 - rect.top;
+
+      const contentX = (wrapper.scrollLeft + midX) / oldZoom;
+      const contentY = (wrapper.scrollTop + midY) / oldZoom;
+
+      zoomLevel = newZoom;
+      applyZoom();
+
+      wrapper.scrollLeft = contentX * newZoom - midX;
+      wrapper.scrollTop = contentY * newZoom - midY;
+    }, { passive: false });
+
+    const endPinch = event => {
+      if (!pinchActive) return;
+      if (event.touches.length < 2) {
+        pinchActive = false;
+        scheduleAutoSave();
+      }
+    };
+    els.drawingWrapper.addEventListener("touchend", endPinch);
+    els.drawingWrapper.addEventListener("touchcancel", endPinch);
+
     els.pointEditAction.addEventListener("click", () => {
       hidePointContextMenu();
       if (contextPoint) editPoint(contextPoint);
@@ -423,6 +488,7 @@ const Workspace = (() => {
     updateBrushControls();
     showOrderLabels = Boolean(state.showOrderLabels);
     zoomLevel = Number(state.zoomLevel || 1);
+    labelFontSize = Number(state.labelFontSize || 30);
 
     commentImageData = state.commentImageData || "";
     undoStack = [];
@@ -452,6 +518,7 @@ const Workspace = (() => {
     }
 
     applyZoom();
+    applyLabelFontSize();
 
     requestAnimationFrame(() => {
       els.drawingWrapper.scrollLeft = state.scrollLeft || 0;
@@ -783,6 +850,7 @@ const Workspace = (() => {
 
     element.addEventListener("pointerdown", event => {
       if (movingPoint !== point) return;
+      if (pinchActive) return;
 
       event.preventDefault();
       event.stopPropagation();
@@ -885,7 +953,7 @@ const Workspace = (() => {
 
     element.textContent =
       showOrderLabels && point.assignedSide && point.assignedSeq
-        ? `${point.assignedSide}${point.assignedSeq} ${measurement}`
+        ? `${point.assignedSide}${point.assignedSeq}`
         : measurement;
 
     element.style.left = point.x + "px";
@@ -1736,6 +1804,7 @@ const Workspace = (() => {
 
     els.commentCanvas.addEventListener("pointerdown", event => {
       if (commentTool === "none") return;
+      if (pinchActive) return;
 
       if (commentTool === "text") {
         event.preventDefault();
@@ -2172,13 +2241,19 @@ const Workspace = (() => {
           row.push(item.seq);
           row.push(point.measurement);
 
+          const notes = [];
+
           if (point.moveDistance > 80) {
-            row.push("Point moved a large distance; check order");
+            notes.push("Point moved a large distance; check order");
           } else if (point.moved) {
-            row.push("Point moved");
-          } else {
-            row.push("");
+            notes.push("Point moved");
           }
+
+          if (dataType.manual) {
+            notes.push("Order manually adjusted; check order");
+          }
+
+          row.push(notes.join("; "));
         });
 
         csv += row.map(cleanCSV).join(",") + "\n";
@@ -2286,7 +2361,7 @@ const Workspace = (() => {
 
       context.textAlign = "center";
       context.textBaseline = "middle";
-      context.font = "30px Arial, sans-serif";
+      context.font = labelFontSize + "px Arial, sans-serif";
       context.lineJoin = "round";
 
       points.forEach(point => {
@@ -2297,11 +2372,11 @@ const Workspace = (() => {
 
         const label =
           showOrderLabels && point.assignedSide && point.assignedSeq
-            ? `${point.assignedSide}${point.assignedSeq} ${measurement}`
+            ? `${point.assignedSide}${point.assignedSeq}`
             : measurement;
 
         // White outline first, then the coloured text on top.
-        context.lineWidth = 6;
+        context.lineWidth = Math.max(2, labelFontSize / 5);
         context.strokeStyle = "#ffffff";
         context.strokeText(label, point.x, point.y);
 
@@ -2371,6 +2446,7 @@ const Workspace = (() => {
       pointMode,
       showOrderLabels,
       zoomLevel,
+      labelFontSize,
       selectedDataId: els.dataSelect.value,
       commentImageData,
       brushColor,
@@ -2454,6 +2530,52 @@ const Workspace = (() => {
     if (els.zoomInBtn) {
       els.zoomInBtn.disabled = zoomLevel >= 5;
     }
+  }
+
+  function applyLabelFontSize() {
+    els.drawingArea.style.setProperty("--label-font-size", labelFontSize + "px");
+
+    if (els.labelSizeDisplay) {
+      els.labelSizeDisplay.textContent = String(labelFontSize);
+    }
+    if (els.labelSizeDownBtn) {
+      els.labelSizeDownBtn.disabled = labelFontSize <= 14;
+    }
+    if (els.labelSizeUpBtn) {
+      els.labelSizeUpBtn.disabled = labelFontSize >= 72;
+    }
+  }
+
+  function changeLabelFontSize(delta) {
+    const next = Math.max(14, Math.min(72, labelFontSize + delta));
+    if (next === labelFontSize) return;
+
+    labelFontSize = next;
+    applyLabelFontSize();
+    scheduleAutoSave();
+  }
+
+  function resetLabelFontSize() {
+    if (labelFontSize === 30) return;
+    labelFontSize = 30;
+    applyLabelFontSize();
+    scheduleAutoSave();
+  }
+
+  function touchDistance(a, b) {
+    return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+  }
+
+  /* Stop any in-progress point drag or pen stroke when a pinch begins. */
+  function abortActiveInteraction() {
+    isDraggingPoint = false;
+    draggedPoint = null;
+    movingPoint = null;
+    isDrawingComment = false;
+    els.drawingWrapper.classList.remove("pointDragActive");
+
+    const moving = els.drawingArea.querySelector(".point.movingPoint");
+    if (moving) moving.classList.remove("movingPoint");
   }
 
   function getDrawingPosition(event) {
