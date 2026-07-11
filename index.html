@@ -83,7 +83,11 @@
       </div>
 
       <div class="toolbarRow drawingTools">
-        <button id="penBtn" class="toolbarButton toolButton" type="button" title="Pen">✏️ Pen</button>
+        <details id="markupMenu" class="markupMenu">
+          <summary id="markupSummary" class="toolbarButton">✎ Markup ▾</summary>
+          <div class="markupMenuPanel">
+            <div class="markupToolRow">
+        <button id="textBtn" class="toolbarButton toolButton" type="button" title="Text Box">T Text</button>
         <button id="highlighterBtn" class="toolbarButton toolButton" type="button" title="Highlighter">🖍 Highlight</button>
         <button id="eraserBtn" class="toolbarButton toolButton" type="button" title="Eraser">
         <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor"
@@ -93,6 +97,9 @@
         </svg>
           <span>Eraser</span>
         </button>
+            </div>
+
+            <span class="markupSectionLabel">Color</span>
 
         <div class="brushPalette" aria-label="Brush colors">
           <button class="colorSwatch selected" data-brush-color="#ff0000" style="--swatch:#ff0000" title="Red"></button>
@@ -102,11 +109,14 @@
           <button class="colorSwatch" data-brush-color="#ffd400" style="--swatch:#ffd400" title="Yellow"></button>
         </div>
 
+            <span class="markupSectionLabel">Size</span>
         <div class="sizePalette" aria-label="Brush sizes">
           <button class="sizeChoice" data-brush-size="3" title="Thin"><span class="sizeLine thin"></span></button>
           <button class="sizeChoice selected" data-brush-size="5" title="Medium"><span class="sizeLine medium"></span></button>
           <button class="sizeChoice" data-brush-size="8" title="Thick"><span class="sizeLine thick"></span></button>
         </div>
+          </div>
+        </details>
 
         <button id="undoBtn" class="toolbarButton iconButton" type="button" title="Undo">↶</button>
         <button id="redoBtn" class="toolbarButton iconButton" type="button" title="Redo">↷</button>
@@ -287,7 +297,10 @@
           <button data-denominator="16" class="fractionButton">/16</button>
         </div>
 
-        <button data-key=" " class="spaceButton">SPACE</button>
+        <div class="measurementUtilityRow">
+          <button data-key=" " class="spaceButton">SPACE</button>
+          <button data-key="X" id="missingValueBtn" class="missingValueButton" type="button">X</button>
+        </div>
 
         <div class="measurementActions">
           <button id="cancelMeasurementBtn" type="button">Cancel</button>
@@ -296,10 +309,24 @@
       </div>
 
       <p class="measurementHint">
-        Type the numerator first, then tap <strong>/4</strong>, <strong>/8</strong>,
+        Use <strong>X</strong> when a measurement is missing. Otherwise type the numerator first, then tap <strong>/4</strong>, <strong>/8</strong>,
         or <strong>/16</strong>. A space appears as an underscore while typing:
         <strong>26_3/8</strong> is saved as <strong>26 3/8</strong>.
       </p>
+    </div>
+  </div>
+
+  <div id="textModal" class="modalBackdrop hidden">
+    <div class="modalCard textCard">
+      <h2>Add Text</h2>
+      <label>Text<input id="textInput" type="text" maxlength="160" placeholder="Type a note"></label>
+      <label>Size
+        <select id="textSizeInput"><option value="18">Small</option><option value="24" selected>Medium</option><option value="32">Large</option></select>
+      </label>
+      <div class="modalActions">
+        <button id="cancelTextBtn" type="button">Cancel</button>
+        <button id="confirmTextBtn" class="primaryButton" type="button">Add</button>
+      </div>
     </div>
   </div>
 

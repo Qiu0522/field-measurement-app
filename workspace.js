@@ -41,6 +41,7 @@ const Workspace = (() => {
   let commentBeforeStroke = "";
   let commentImageData = "";
   let commentFingerPan = null;
+  let pendingTextPosition = null;
 
   let measurementCallback = null;
   let measurementRawValue = "";
@@ -66,7 +67,9 @@ const Workspace = (() => {
     els.dataSelect = document.getElementById("dataSelect");
     els.addBtn = document.getElementById("addBtn");
     els.lockBtn = document.getElementById("lockBtn");
-    els.penBtn = document.getElementById("penBtn");
+    els.textBtn = document.getElementById("textBtn");
+    els.markupMenu = document.getElementById("markupMenu");
+    els.markupSummary = document.getElementById("markupSummary");
     els.highlighterBtn = document.getElementById("highlighterBtn");
     els.eraserBtn = document.getElementById("eraserBtn");
     els.colorSwatches = Array.from(document.querySelectorAll("[data-brush-color]"));
@@ -113,6 +116,12 @@ const Workspace = (() => {
     els.measurementTitle = document.getElementById("measurementTitle");
     els.measurementDisplay = document.getElementById("measurementDisplay");
     els.measurementError = document.getElementById("measurementError");
+    els.missingValueBtn = document.getElementById("missingValueBtn");
+    els.textModal = document.getElementById("textModal");
+    els.textInput = document.getElementById("textInput");
+    els.textSizeInput = document.getElementById("textSizeInput");
+    els.cancelTextBtn = document.getElementById("cancelTextBtn");
+    els.confirmTextBtn = document.getElementById("confirmTextBtn");
     els.cancelMeasurementBtn = document.getElementById("cancelMeasurementBtn");
 
     els.directionModal = document.getElementById("directionModal");
@@ -183,7 +192,7 @@ const Workspace = (() => {
 
     els.addBtn.addEventListener("click", () => setPointMode("add"));
     els.lockBtn.addEventListener("click", () => setPointMode("lock"));
-    els.penBtn.addEventListener("click", () => toggleCommentTool("pen"));
+    els.textBtn.addEventListener("click", () => toggleCommentTool("text"));
     els.highlighterBtn.addEventListener("click", () => toggleCommentTool("highlighter"));
     els.eraserBtn.addEventListener("click", () => toggleCommentTool("eraser"));
     els.colorSwatches.forEach(button => {
@@ -326,6 +335,8 @@ const Workspace = (() => {
         appendMeasurementValue(button.dataset.key);
       });
     });
+    els.cancelTextBtn.addEventListener("click", cancelTextPlacement);
+    els.confirmTextBtn.addEventListener("click", confirmTextPlacement);
 
     els.measurementModal.querySelectorAll("[data-denominator]").forEach(button => {
       button.addEventListener("click", () => {
@@ -602,9 +613,10 @@ const Workspace = (() => {
 
   function toggleCommentTool(tool) {
     commentTool = commentTool === tool ? "none" : tool;
+    if (els.markupMenu) els.markupMenu.open = false;
 
-    if (commentTool === "pen") {
-      setStatus("Pen ON: Apple Pencil draws; finger scrolls.");
+    if (commentTool === "text") {
+      setStatus("Text ON: tap the drawing to place a text box.");
     } else if (commentTool === "highlighter") {
       setStatus("Highlighter ON: Apple Pencil highlights; finger scrolls.");
     } else if (commentTool === "eraser") {
@@ -620,16 +632,23 @@ const Workspace = (() => {
     [
       els.addBtn,
       els.lockBtn,
-      els.penBtn,
+      els.textBtn,
       els.highlighterBtn,
       els.eraserBtn
     ].forEach(button => button.classList.remove("activeTool"));
 
     if (pointMode === "add") els.addBtn.classList.add("activeTool");
     if (pointMode === "lock") els.lockBtn.classList.add("activeTool");
-    if (commentTool === "pen") els.penBtn.classList.add("activeTool");
+    if (commentTool === "text") els.textBtn.classList.add("activeTool");
     if (commentTool === "highlighter") els.highlighterBtn.classList.add("activeTool");
     if (commentTool === "eraser") els.eraserBtn.classList.add("activeTool");
+    if (els.markupSummary) {
+      const names = { text: "T Text", highlighter: "🖍 Highlight", eraser: "Eraser" };
+      els.markupSummary.textContent = commentTool === "none"
+        ? "✎ Markup ▾"
+        : `${names[commentTool]} ▾`;
+      els.markupSummary.classList.toggle("activeTool", commentTool !== "none");
+    }
     els.commentCanvas.classList.toggle("inkActive", commentTool !== "none");
     els.drawingArea.classList.toggle("inkMode", commentTool !== "none");
     els.drawingWrapper.classList.toggle("inkMode", commentTool !== "none");
@@ -1539,6 +1558,7 @@ const Workspace = (() => {
     Rejects junk like //, 3/8/16, 3/0, and stray extra minus signs.
   */
   function isValidMeasurement(value) {
+    if (String(value).trim().toUpperCase() === "X") return true;
     const fraction = "\\d+\\/[1-9]\\d*";
     const pattern = new RegExp(
       "^-?(\\d+(\\s" + fraction + ")?|" + fraction + ")$"
@@ -1559,7 +1579,12 @@ const Workspace = (() => {
   }
 
   function appendMeasurementValue(value) {
-    setMeasurementRawValue(measurementRawValue + value);
+    if (String(value).toUpperCase() === "X") {
+      setMeasurementRawValue("X");
+      return;
+    }
+    const base = measurementRawValue.toUpperCase() === "X" ? "" : measurementRawValue;
+    setMeasurementRawValue(base + value);
   }
 
   function appendMeasurementDenominator(denominator) {
@@ -1608,6 +1633,8 @@ const Workspace = (() => {
     measurementCallback = callback;
     hideMeasurementError();
     els.measurementModal.classList.remove("hidden");
+    const activeType = getDataType(els.dataSelect.value);
+    if (els.missingValueBtn) els.missingValueBtn.style.setProperty("--missing-color", activeType?.color || "#1f6feb");
   }
 
   function confirmMeasurement() {
@@ -1699,6 +1726,16 @@ const Workspace = (() => {
 
     els.commentCanvas.addEventListener("pointerdown", event => {
       if (commentTool === "none") return;
+
+      if (commentTool === "text") {
+        event.preventDefault();
+        const position = getCanvasPosition(event);
+        pendingTextPosition = position;
+        els.textInput.value = "";
+        els.textModal.classList.remove("hidden");
+        setTimeout(() => els.textInput.focus(), 0);
+        return;
+      }
 
       // In ink mode a finger pans the drawing, while Pencil only writes.
       if (event.pointerType === "touch") {
@@ -1819,6 +1856,38 @@ const Workspace = (() => {
   function normalisePressure(event) {
     const pressure = Number(event.pressure);
     return pressure > 0 ? Math.max(0.05, Math.min(1, pressure)) : 0.5;
+  }
+
+  function cancelTextPlacement() {
+    pendingTextPosition = null;
+    els.textModal.classList.add("hidden");
+  }
+
+  function confirmTextPlacement() {
+    const value = els.textInput.value.trim();
+    if (!value || !pendingTextPosition) return;
+    const before = commentImageData;
+    const context = els.commentCanvas.getContext("2d");
+    const size = Number(els.textSizeInput.value) || 24;
+    context.save();
+    context.globalAlpha = 1;
+    context.globalCompositeOperation = "source-over";
+    context.font = `600 ${size}px -apple-system, BlinkMacSystemFont, sans-serif`;
+    context.textBaseline = "top";
+    context.lineJoin = "round";
+    context.lineWidth = Math.max(3, size / 7);
+    context.strokeStyle = "white";
+    context.fillStyle = brushColor;
+    context.strokeText(value, pendingTextPosition.x, pendingTextPosition.y);
+    context.fillText(value, pendingTextPosition.x, pendingTextPosition.y);
+    context.restore();
+    const after = els.commentCanvas.toDataURL();
+    pushUndo({ type: "comment", before, after });
+    commentImageData = after;
+    pendingTextPosition = null;
+    els.textModal.classList.add("hidden");
+    scheduleAutoSave();
+    setStatus("Text added.");
   }
 
   function finishStroke() {

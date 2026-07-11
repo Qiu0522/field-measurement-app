@@ -1,4 +1,18 @@
-FIELD MEASUREMENT VERSION 4
+FIELD MEASUREMENT VERSION 6.6
+
+VERSION 6.6.1 — COLLAPSIBLE MARKUP MENU
+- Text, Highlighter, Eraser, Color, and Size are grouped inside Markup.
+- Selecting a tool closes the panel and the Markup button shows the active tool.
+- Color and size choices keep the panel open for quicker adjustment.
+
+VERSION 6.6 — TEXT + MISSING VALUE
+- Removed Pen and added a Text tool with small, medium, and large sizes.
+- Text uses the selected annotation colour, supports Undo/Redo, saves with the project, and exports to PDF.
+- Added an X button beside SPACE for missing measurements. X uses the current Data Type colour and exports to CSV normally.
+- Highlighter and Eraser remain available.
+- Service-worker cache version bumped so deployed devices receive the update.
+
+PREVIOUS VERSION HISTORY
 ================================
 
 UPLOAD THESE FILES TO THE SAME GITHUB FOLDER:
