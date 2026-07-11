@@ -79,6 +79,7 @@ const Workspace = (() => {
     els.zoomOutBtn = document.getElementById("zoomOutBtn");
     els.zoomInBtn = document.getElementById("zoomInBtn");
     els.zoomDisplay = document.getElementById("zoomDisplay");
+    els.fitBtn = document.getElementById("fitBtn");
     els.orderBtn = document.getElementById("orderBtn");
     els.batchAssignBtn = document.getElementById("batchAssignBtn");
     els.labelsBtn = document.getElementById("labelsBtn");
@@ -278,6 +279,7 @@ const Workspace = (() => {
     });
 
     els.zoomDisplay.addEventListener("click", () => resetZoom());
+    els.fitBtn.addEventListener("click", fitDrawing);
 
     els.pointEditAction.addEventListener("click", () => {
       hidePointContextMenu();
@@ -2415,6 +2417,19 @@ const Workspace = (() => {
   function resetZoom() {
     if (zoomLevel === 1) return;
     changeZoom(1 - zoomLevel);
+  }
+
+  function fitDrawing() {
+    const wrapperWidth = Math.max(1, els.drawingWrapper.clientWidth - 24);
+    const wrapperHeight = Math.max(1, els.drawingWrapper.clientHeight - 24);
+    const drawingWidth = Math.max(1, els.drawingArea.offsetWidth);
+    const drawingHeight = Math.max(1, els.drawingArea.offsetHeight);
+    const target = Math.max(0.3, Math.min(5, wrapperWidth / drawingWidth, wrapperHeight / drawingHeight));
+    changeZoom(target - zoomLevel);
+    requestAnimationFrame(() => {
+      els.drawingWrapper.scrollLeft = 0;
+      els.drawingWrapper.scrollTop = 0;
+    });
   }
 
   function applyZoom() {

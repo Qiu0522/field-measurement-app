@@ -1,5 +1,12 @@
 FIELD MEASUREMENT VERSION 6.6
 
+VERSION 6.7 — TOOLBAR, ICONS, AND COLOUR SYSTEM
+- First row: Library and project name on the left; Zoom, Fit, Undo, Redo, Save, and Export on the right.
+- Second row: Data Type, Point, Lock, Order, Batch Side, Labels, and the Markup dropdown.
+- Replaced mixed emoji controls with consistent line icons.
+- Added a professional cool-gray and engineering-blue colour system; Save remains green.
+- Fit now calculates a best-fit zoom for the visible workspace.
+
 VERSION 6.6.1 — COLLAPSIBLE MARKUP MENU
 - Text, Highlighter, Eraser, Color, and Size are grouped inside Markup.
 - Selecting a tool closes the panel and the Markup button shows the active tool.

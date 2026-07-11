@@ -3,14 +3,14 @@
 }
 
 :root {
-  --background: #f4f5f7;
+  --background: #f3f6f9;
   --surface: #ffffff;
-  --border: #d7d9dd;
-  --text: #202124;
-  --muted: #6f7378;
-  --primary: #276ef1;
-  --danger: #c9342f;
-  --active: #55585d;
+  --border: #d6dee7;
+  --text: #243242;
+  --muted: #647386;
+  --primary: #2563a9;
+  --danger: #c43d3d;
+  --active: #2563a9;
 }
 
 html,
@@ -21,7 +21,7 @@ body {
 }
 
 body {
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
   color: var(--text);
   background: var(--background);
   overflow: hidden;
@@ -211,8 +211,9 @@ button {
 #toolbar {
   flex: 0 0 auto;
   touch-action: manipulation;
-  border-bottom: 1px solid #bfc2c7;
-  background: #eeeeef;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: 0 2px 8px rgba(30, 50, 70, .08);
   z-index: 100;
 }
 
@@ -227,7 +228,8 @@ button {
 }
 
 .toolbarRow::-webkit-scrollbar { display: none; }
-.primaryTools { border-bottom: 1px solid #d4d5d8; }
+.primaryTools { border-bottom: 1px solid #e3e8ee; }
+.toolbarSpacer { flex:1 1 auto; min-width:20px; }
 .drawingTools { overflow: visible; }
 
 .markupMenu { position: relative; }
@@ -255,16 +257,23 @@ button {
   min-width: 44px;
   min-height: 44px;
   padding: 7px 11px;
-  border: 1px solid #96999e;
-  border-radius: 8px;
-  background: #f7f7f7;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--text);
   white-space: nowrap;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  box-shadow:0 1px 2px rgba(30,50,70,.04);
 }
+.toolbarButton:hover { border-color:#aebdcb; background:#f6f9fc; }
 
 .toolbarButton.activeTool {
-  color: white;
-  border-color: #333;
-  background: var(--active);
+  color: #17528e;
+  border-color: #8eb6df;
+  background: #e8f2fc;
   font-weight: bold;
 }
 
@@ -282,6 +291,11 @@ button {
   padding: 7px;
   font-size: 21px;
 }
+.uiIcon { width:19px; height:19px; fill:none; stroke:currentColor; stroke-width:1.9; stroke-linecap:round; stroke-linejoin:round; flex:none; }
+.saveButton { color:#fff; border-color:#23834a; background:#23834a; }
+.saveButton:hover { color:#fff; border-color:#1d6f3f; background:#1d6f3f; }
+.exportMenu > summary { color:#fff; border-color:var(--primary); background:var(--primary); }
+.exportMenu > summary:hover { color:#fff; border-color:#1d518a; background:#1d518a; }
 
 .toolButton { display: inline-flex; align-items: center; gap: 6px; }
 

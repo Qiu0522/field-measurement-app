@@ -18,7 +18,7 @@
   cached copies are cleared and every device picks up the new version.
 */
 
-const CACHE_VERSION = "field-measurement-v6-6-1-markup-menu-v1";
+const CACHE_VERSION = "field-measurement-v6-7-toolbar-icons-v1";
 const CACHE_NAME = CACHE_VERSION;
 
 // Same-origin app shell, relative to the service worker location.
