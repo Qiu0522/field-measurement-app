@@ -13,6 +13,8 @@ const SaveController = (() => {
   let saveFunction = null;
   let statusElement = null;
   let dirty = false;
+  let dirtyGen = 0;
+  let savingGen = 0;
   let savingPromise = null;
   let safetyTimer = null;
 
@@ -31,11 +33,27 @@ const SaveController = (() => {
     }, options.intervalMs || SAFETY_INTERVAL_MS);
 
     window.addEventListener("beforeunload", handleBeforeUnload);
+
+    // beforeunload is unreliable in iOS Home-Screen (standalone) mode, so also
+    // save when the app is hidden/backgrounded or the page is being unloaded.
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") flushSave("visibility");
+    });
+    window.addEventListener("pagehide", () => flushSave("pagehide"));
+
     markSaved();
+  }
+
+  function flushSave(reason) {
+    if (!dirty || !saveFunction || savingPromise) return;
+    save(reason).catch(error => {
+      console.error("Save on hide failed:", error);
+    });
   }
 
   function markUnsaved() {
     dirty = true;
+    dirtyGen += 1;
     setStatus("● Unsaved", "unsaved");
   }
 
@@ -62,12 +80,18 @@ const SaveController = (() => {
     if (!dirty && !force) return;
     if (savingPromise) return savingPromise;
 
+    savingGen = dirtyGen;
     markSaving();
 
     savingPromise = Promise.resolve()
       .then(() => saveFunction({ reason, force }))
       .then(result => {
-        markSaved();
+        // If edits happened while saving, stay Unsaved so they get written next.
+        if (dirtyGen === savingGen) {
+          markSaved();
+        } else {
+          setStatus("● Unsaved", "unsaved");
+        }
         return result;
       })
       .catch(error => {

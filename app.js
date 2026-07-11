@@ -363,11 +363,32 @@ const App = (() => {
     els.folderModal.classList.add("hidden");
   }
 
+  function findSiblingByName(type, name, folderScope, excludeId) {
+    const lower = name.trim().toLowerCase();
+    if (type === "folder") {
+      return folders.find(f =>
+        (f.parentId || null) === folderScope &&
+        f.id !== excludeId &&
+        (f.name || "").trim().toLowerCase() === lower
+      );
+    }
+    return projects.find(p =>
+      (p.folderId || null) === folderScope &&
+      p.id !== excludeId &&
+      (p.name || "").trim().toLowerCase() === lower
+    );
+  }
+
   async function createFolder() {
     const name = els.folderNameInput.value.trim();
 
     if (!name) {
       alert("Enter a folder name.");
+      return;
+    }
+
+    if (findSiblingByName("folder", name, currentFolderId, null)) {
+      alert(`A folder named "${name}" already exists here. Please choose a different name.`);
       return;
     }
 
@@ -417,6 +438,17 @@ const App = (() => {
     if (pendingProjectKind === "pdf" && !pendingPdfData) {
       alert("Choose a PDF file.");
       return;
+    }
+
+    const duplicate = findSiblingByName("project", name, currentFolderId, null);
+    if (duplicate) {
+      const replace = confirm(
+        `A work file named "${name}" already exists here.\n\n` +
+        "OK = Replace it (the old file is deleted)\n" +
+        "Cancel = go back and change the name"
+      );
+      if (!replace) return; // leave the dialog open so they can rename
+      await ProjectDB.deleteProject(duplicate.id);
     }
 
     const now = Date.now();
@@ -494,6 +526,11 @@ const App = (() => {
       const name = prompt("New folder name:", folder.name);
       if (!name?.trim()) return;
 
+      if (findSiblingByName("folder", name, folder.parentId || null, folder.id)) {
+        alert(`A folder named "${name.trim()}" already exists here. Please choose a different name.`);
+        return;
+      }
+
       folder.name = name.trim();
       await ProjectDB.saveFolder(folder);
     } else {
@@ -502,6 +539,17 @@ const App = (() => {
 
       const name = prompt("New work file name:", project.name);
       if (!name?.trim()) return;
+
+      const duplicate = findSiblingByName("project", name, project.folderId || null, project.id);
+      if (duplicate) {
+        const replace = confirm(
+          `A work file named "${name.trim()}" already exists here.\n\n` +
+          "OK = Replace it (the old file is deleted)\n" +
+          "Cancel = keep the current name"
+        );
+        if (!replace) return;
+        await ProjectDB.deleteProject(duplicate.id);
+      }
 
       project.name = name.trim();
       await ProjectDB.saveProject(project);

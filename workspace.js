@@ -1288,6 +1288,13 @@ const Workspace = (() => {
     const dataType = getDataType(dataId);
     if (!dataType) return;
 
+    // Automatic ordering clears any "moved up/down" notes; manual keeps them.
+    if (!dataType.manual) {
+      points
+        .filter(p => p.dataId === dataId)
+        .forEach(p => { p.orderNote = ""; });
+    }
+
     const ordered = getOrderedPoints(
       dataId,
       dataType.direction || "clockwise"
@@ -1433,7 +1440,8 @@ const Workspace = (() => {
           uid: p.uid,
           manualSeq: p.manualSeq,
           assignedSide: p.assignedSide,
-          sideLocked: !!p.sideLocked
+          sideLocked: !!p.sideLocked,
+          orderNote: p.orderNote || ""
         }))
     };
   }
@@ -1459,6 +1467,7 @@ const Workspace = (() => {
           p.manualSeq = entry.manualSeq;
           p.assignedSide = entry.assignedSide;
           p.sideLocked = !!entry.sideLocked;
+          p.orderNote = entry.orderNote || "";
         }
       });
 
@@ -1524,6 +1533,8 @@ const Workspace = (() => {
     const temp = point.manualSeq;
     point.manualSeq = other.manualSeq;
     other.manualSeq = temp;
+
+    point.orderNote = delta < 0 ? "up" : "down";
 
     const after = snapshotOrder(point.dataId);
     pushUndo({ type: "reorder", dataId: point.dataId, before, after });
@@ -1926,7 +1937,7 @@ const Workspace = (() => {
         // Draw behind all existing ink on the annotation canvas, while the
         // whole annotation canvas still remains above the PDF drawing.
         context.globalCompositeOperation = "destination-over";
-        context.globalAlpha = 0.14;
+        context.globalAlpha = 0.35;
         context.strokeStyle = brushColor;
         context.lineWidth = brushWidth * 4;
       } else {
@@ -2263,7 +2274,7 @@ const Workspace = (() => {
     const paint = () => {
       context.save();
       context.globalCompositeOperation = "destination-over";
-      context.globalAlpha = 0.14;
+      context.globalAlpha = 0.35;
       context.strokeStyle = brushColor;
       context.lineWidth = brushWidth * 4;
       context.lineCap = "round";
@@ -2577,8 +2588,10 @@ const Workspace = (() => {
             notes.push("Point moved");
           }
 
-          if (dataType.manual) {
-            notes.push("Order manually adjusted; check order");
+          if (point.orderNote === "up") {
+            notes.push("Point moved up in order");
+          } else if (point.orderNote === "down") {
+            notes.push("Point moved down in order");
           }
 
           row.push(notes.join("; "));
