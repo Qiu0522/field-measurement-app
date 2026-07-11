@@ -1,7 +1,6 @@
 "use strict";
 
 const Workspace = (() => {
-  const LIVE_INK_SCALE = 0.3;
   const DEFAULT_DATA_TYPES = [
     { id: "data1", name: "测量落差", color: "#0066ff", counter: 1, export: true, ordered: false, direction: "clockwise" },
     { id: "data2", name: "Embed 距离", color: "#ff0000", counter: 1, export: true, ordered: false, direction: "clockwise" },
@@ -41,8 +40,6 @@ const Workspace = (() => {
   let lastCommentPressure = 0.5;
   let commentBeforeStroke = "";
   let commentImageData = "";
-  let commentStrokes = [];
-  let currentCommentStroke = null;
   let commentFingerPan = null;
 
   let measurementCallback = null;
@@ -94,7 +91,6 @@ const Workspace = (() => {
     els.drawingImage = document.getElementById("drawingImage");
     els.pdfCanvas = document.getElementById("pdfCanvas");
     els.commentCanvas = document.getElementById("commentCanvas");
-    els.liveInkCanvas = document.getElementById("liveInkCanvas");
 
     els.pointContextMenu = document.getElementById("pointContextMenu");
     els.pointEditAction = document.getElementById("pointEditAction");
@@ -412,7 +408,6 @@ const Workspace = (() => {
     zoomLevel = Number(state.zoomLevel || 1);
 
     commentImageData = state.commentImageData || "";
-    commentStrokes = clone(state.commentStrokes || []);
     undoStack = [];
     redoStack = [];
     updateUndoRedoButtons();
@@ -438,7 +433,6 @@ const Workspace = (() => {
     if (commentImageData) {
       await restoreCommentImage(commentImageData);
     }
-    renderStoredStrokes();
 
     applyZoom();
 
@@ -523,12 +517,6 @@ const Workspace = (() => {
     els.commentCanvas.height = height;
     els.commentCanvas.style.width = width + "px";
     els.commentCanvas.style.height = height + "px";
-    // Keep the live Pencil surface much smaller internally. CSS stretches it
-    // over the full drawing, while stored stroke coordinates stay full-size.
-    els.liveInkCanvas.width = Math.max(1, Math.round(width * LIVE_INK_SCALE));
-    els.liveInkCanvas.height = Math.max(1, Math.round(height * LIVE_INK_SCALE));
-    els.liveInkCanvas.style.width = width + "px";
-    els.liveInkCanvas.style.height = height + "px";
   }
 
   function renderDataSelect(selectedId = null) {
@@ -642,7 +630,7 @@ const Workspace = (() => {
     if (commentTool === "pen") els.penBtn.classList.add("activeTool");
     if (commentTool === "highlighter") els.highlighterBtn.classList.add("activeTool");
     if (commentTool === "eraser") els.eraserBtn.classList.add("activeTool");
-    els.liveInkCanvas.classList.toggle("inkActive", commentTool !== "none");
+    els.commentCanvas.classList.toggle("inkActive", commentTool !== "none");
     els.drawingArea.classList.toggle("inkMode", commentTool !== "none");
     els.drawingWrapper.classList.toggle("inkMode", commentTool !== "none");
   }
@@ -1703,14 +1691,13 @@ const Workspace = (() => {
   }
 
   function bindCommentCanvas() {
-    const inkCanvas = els.liveInkCanvas;
     ["contextmenu", "selectstart", "dragstart"].forEach(type => {
       els.drawingArea.addEventListener(type, event => {
         if (commentTool !== "none") event.preventDefault();
       });
     });
 
-    inkCanvas.addEventListener("pointerdown", event => {
+    els.commentCanvas.addEventListener("pointerdown", event => {
       if (commentTool === "none") return;
 
       // In ink mode a finger pans the drawing, while Pencil only writes.
@@ -1723,7 +1710,7 @@ const Workspace = (() => {
           left: els.drawingWrapper.scrollLeft,
           top: els.drawingWrapper.scrollTop
         };
-        try { inkCanvas.setPointerCapture(event.pointerId); } catch (_) {}
+        try { els.commentCanvas.setPointerCapture(event.pointerId); } catch (_) {}
         return;
       }
 
@@ -1732,30 +1719,21 @@ const Workspace = (() => {
       event.preventDefault();
 
       try {
-        inkCanvas.setPointerCapture(event.pointerId);
+        els.commentCanvas.setPointerCapture(event.pointerId);
       } catch (_) {}
 
       // Reuse the already-saved previous image instead of encoding the huge
       // canvas when Pencil first touches the screen.
       commentBeforeStroke = commentImageData;
       isDrawingComment = true;
-      currentCommentStroke = {
-        tool: commentTool,
-        color: brushColor,
-        width: brushWidth,
-        points: []
-      };
 
       const position = getCanvasPosition(event);
       lastCommentX = position.x;
       lastCommentY = position.y;
       lastCommentPressure = normalisePressure(event);
-      currentCommentStroke.points.push({
-        x: lastCommentX, y: lastCommentY, pressure: lastCommentPressure
-      });
     });
 
-    inkCanvas.addEventListener("pointermove", event => {
+    els.commentCanvas.addEventListener("pointermove", event => {
       if (commentFingerPan && event.pointerId === commentFingerPan.pointerId) {
         event.preventDefault();
         els.drawingWrapper.scrollLeft =
@@ -1769,8 +1747,7 @@ const Workspace = (() => {
       if (!["pen", "mouse"].includes(event.pointerType)) return;
 
       event.preventDefault();
-      const context = inkCanvas.getContext("2d", { alpha: true, desynchronized: true });
-      context.setTransform(LIVE_INK_SCALE, 0, 0, LIVE_INK_SCALE, 0, 0);
+      const context = els.commentCanvas.getContext("2d");
       context.lineCap = "round";
       context.lineJoin = "round";
 
@@ -1784,7 +1761,6 @@ const Workspace = (() => {
         ...getCanvasPosition(sample),
         pressure: normalisePressure(sample)
       }));
-      currentCommentStroke.points.push(...positions);
       const averagePressure = positions.reduce(
         (sum, item) => sum + item.pressure,
         lastCommentPressure
@@ -1824,14 +1800,14 @@ const Workspace = (() => {
       context.globalAlpha = 1;
     });
 
-    inkCanvas.addEventListener("pointerup", event => {
+    els.commentCanvas.addEventListener("pointerup", event => {
       if (commentFingerPan && event.pointerId === commentFingerPan.pointerId) {
         commentFingerPan = null;
         return;
       }
       finishStroke();
     });
-    inkCanvas.addEventListener("pointercancel", event => {
+    els.commentCanvas.addEventListener("pointercancel", event => {
       if (commentFingerPan && event.pointerId === commentFingerPan.pointerId) {
         commentFingerPan = null;
         return;
@@ -1845,68 +1821,19 @@ const Workspace = (() => {
     return pressure > 0 ? Math.max(0.05, Math.min(1, pressure)) : 0.5;
   }
 
-  function renderStoredStrokes() {
-    const context = els.commentCanvas.getContext("2d");
-    const drawVectors = () => commentStrokes.forEach(stroke => drawVectorStroke(context, stroke));
-    context.clearRect(0, 0, els.commentCanvas.width, els.commentCanvas.height);
-
-    if (commentImageData) {
-      const image = new Image();
-      image.onload = () => {
-        context.drawImage(image, 0, 0);
-        drawVectors();
-      };
-      image.src = commentImageData;
-    } else {
-      drawVectors();
-    }
-  }
-
-  function drawVectorStroke(context, stroke) {
-    const points = stroke.points || [];
-    if (points.length < 2) return;
-    context.save();
-    context.lineJoin = "round";
-    context.lineCap = stroke.tool === "highlighter" ? "butt" : "round";
-    context.globalAlpha = stroke.tool === "highlighter" ? 0.14 : 1;
-    context.globalCompositeOperation = stroke.tool === "eraser"
-      ? "destination-out"
-      : stroke.tool === "highlighter" ? "destination-over" : "source-over";
-    context.strokeStyle = stroke.color || "#ff0000";
-    context.lineWidth = stroke.tool === "eraser" ? 36
-      : stroke.tool === "highlighter" ? (stroke.width || 5) * 4
-      : stroke.width || 5;
-    context.beginPath();
-    context.moveTo(points[0].x, points[0].y);
-    for (let i = 1; i < points.length; i += 1) {
-      const previous = points[i - 1];
-      const current = points[i];
-      context.quadraticCurveTo(
-        previous.x, previous.y,
-        (previous.x + current.x) / 2,
-        (previous.y + current.y) / 2
-      );
-    }
-    context.lineTo(points[points.length - 1].x, points[points.length - 1].y);
-    context.stroke();
-    context.restore();
-  }
-
   function finishStroke() {
     if (!isDrawingComment) return;
 
     isDrawingComment = false;
-    const stroke = currentCommentStroke;
-    currentCommentStroke = null;
-    const liveContext = els.liveInkCanvas.getContext("2d");
-    liveContext.setTransform(1, 0, 0, 1, 0, 0);
-    liveContext.clearRect(0, 0, els.liveInkCanvas.width, els.liveInkCanvas.height);
-    if (!stroke || stroke.points.length < 2) return;
-    commentStrokes.push(stroke);
-    // Composite only the completed stroke. A full history redraw is reserved
-    // for Undo/Redo and project loading.
-    drawVectorStroke(els.commentCanvas.getContext("2d"), stroke);
-    pushUndo({ type: "vectorComment", stroke, index: commentStrokes.length - 1 });
+    const after = els.commentCanvas.toDataURL();
+
+    pushUndo({
+      type: "comment",
+      before: commentBeforeStroke,
+      after
+    });
+
+    commentImageData = after;
     scheduleAutoSave();
   }
 
@@ -2024,11 +1951,6 @@ const Workspace = (() => {
       restoreCommentImage(action.before);
     }
 
-    if (action.type === "vectorComment") {
-      commentStrokes.splice(action.index, 1);
-      renderStoredStrokes();
-    }
-
     redoStack.push(action);
     updateUndoRedoButtons();
     scheduleAutoSave();
@@ -2095,11 +2017,6 @@ const Workspace = (() => {
 
     if (action.type === "comment") {
       restoreCommentImage(action.after);
-    }
-
-    if (action.type === "vectorComment") {
-      commentStrokes.splice(action.index, 0, action.stroke);
-      renderStoredStrokes();
     }
 
     undoStack.push(action);
@@ -2377,7 +2294,6 @@ const Workspace = (() => {
       zoomLevel,
       selectedDataId: els.dataSelect.value,
       commentImageData,
-      commentStrokes,
       brushColor,
       brushWidth,
       scrollLeft: els.drawingWrapper.scrollLeft,
