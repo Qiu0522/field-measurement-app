@@ -289,9 +289,15 @@ const Workspace = (() => {
     els.zoomDisplay.addEventListener("click", () => resetZoom());
     els.fitBtn.addEventListener("click", fitDrawing);
 
-    els.labelSizeDownBtn.addEventListener("click", () => changeLabelFontSize(-2));
-    els.labelSizeUpBtn.addEventListener("click", () => changeLabelFontSize(2));
-    els.labelSizeDisplay.addEventListener("click", resetLabelFontSize);
+    if (els.labelSizeDownBtn) {
+      els.labelSizeDownBtn.addEventListener("click", () => changeLabelFontSize(-2));
+    }
+    if (els.labelSizeUpBtn) {
+      els.labelSizeUpBtn.addEventListener("click", () => changeLabelFontSize(2));
+    }
+    if (els.labelSizeDisplay) {
+      els.labelSizeDisplay.addEventListener("click", resetLabelFontSize);
+    }
 
     /*
       Two-finger pinch zooms the drawing only. The toolbar and page stay put
@@ -959,6 +965,7 @@ const Workspace = (() => {
     element.style.left = point.x + "px";
     element.style.top = point.y + "px";
     element.style.color = dataType?.color || "black";
+    element.style.fontSize = labelFontSize + "px";
   }
 
   function editPoint(point) {
@@ -2533,7 +2540,10 @@ const Workspace = (() => {
   }
 
   function applyLabelFontSize() {
-    els.drawingArea.style.setProperty("--label-font-size", labelFontSize + "px");
+    points.forEach(point => {
+      const element = findPointElement(point.uid);
+      if (element) element.style.fontSize = labelFontSize + "px";
+    });
 
     if (els.labelSizeDisplay) {
       els.labelSizeDisplay.textContent = String(labelFontSize);
