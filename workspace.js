@@ -25,6 +25,10 @@ const Workspace = (() => {
   let pinchStartDist = 0;
   let pinchStartZoom = 1;
 
+  let clickStartX = 0;
+  let clickStartY = 0;
+  let clickMoved = false;
+
   let contextPoint = null;
   let movingPoint = null;
 
@@ -96,6 +100,11 @@ const Workspace = (() => {
     els.labelSizeUpBtn = document.getElementById("labelSizeUpBtn");
     els.labelSizeDisplay = document.getElementById("labelSizeDisplay");
     els.fitBtn = document.getElementById("fitBtn");
+
+    els.reviewBtn = document.getElementById("reviewBtn");
+    els.reviewSidebar = document.getElementById("reviewSidebar");
+    els.reviewList = document.getElementById("reviewList");
+    els.closeReviewBtn = document.getElementById("closeReviewBtn");
     els.orderBtn = document.getElementById("orderBtn");
     els.batchAssignBtn = document.getElementById("batchAssignBtn");
     els.labelsBtn = document.getElementById("labelsBtn");
@@ -293,6 +302,18 @@ const Workspace = (() => {
     });
 
     els.drawingArea.addEventListener("click", handleDrawingClick);
+
+    els.drawingArea.addEventListener("pointerdown", event => {
+      clickStartX = event.clientX;
+      clickStartY = event.clientY;
+      clickMoved = false;
+    });
+    els.drawingArea.addEventListener("pointermove", event => {
+      if (!clickMoved &&
+          Math.hypot(event.clientX - clickStartX, event.clientY - clickStartY) > 10) {
+        clickMoved = true;
+      }
+    });
     /*
       Scrolling no longer triggers a database write. Scroll position is
       captured during the next content save or when returning to Library.
@@ -318,6 +339,11 @@ const Workspace = (() => {
 
     els.zoomDisplay.addEventListener("click", () => resetZoom());
     els.fitBtn.addEventListener("click", fitDrawing);
+
+    if (els.reviewBtn) els.reviewBtn.addEventListener("click", toggleReviewSidebar);
+    if (els.closeReviewBtn) els.closeReviewBtn.addEventListener("click", () => {
+      els.reviewSidebar.classList.add("hidden");
+    });
 
     if (els.labelSizeDownBtn) {
       els.labelSizeDownBtn.addEventListener("click", () => changeLabelFontSize(-2));
@@ -791,6 +817,12 @@ const Workspace = (() => {
     if (commentTool !== "none") return;
 
     deselectTextNotes();
+
+    // A drag (pan) should not drop a point.
+    if (clickMoved) {
+      clickMoved = false;
+      return;
+    }
 
     const position = getDrawingPosition(event);
 
@@ -1318,6 +1350,8 @@ const Workspace = (() => {
       item.point.assignedSeq = item.seq;
       updatePointElement(item.point);
     });
+
+    refreshReviewIfOpen();
   }
 
   /*
@@ -2396,6 +2430,9 @@ const Workspace = (() => {
 
   function pushUndo(action) {
     undoStack.push(action);
+    // Bound memory: comment strokes store full-canvas images, so an unbounded
+    // history can exhaust memory on long sessions.
+    if (undoStack.length > 40) undoStack.shift();
     redoStack = [];
     updateUndoRedoButtons();
   }
@@ -2788,26 +2825,48 @@ const Workspace = (() => {
 
       context.restore();
 
-      await html2pdf()
-        .set({
-          margin: 0,
-          filename: fileName,
-          image: {
-            type: "jpeg",
-            quality: 0.98
-          },
-          jsPDF: {
-            unit: "px",
-            format: [exportWidth, exportHeight],
-            orientation:
-              exportWidth > exportHeight
-                ? "landscape"
-                : "portrait",
-            compress: true
-          }
-        })
-        .from(exportCanvas)
-        .save();
+      const orientation = exportWidth > exportHeight ? "landscape" : "portrait";
+
+      // Prefer embedding the finished canvas directly (jsPDF ships inside the
+      // html2pdf bundle). This avoids html2pdf's html2canvas screenshot step,
+      // which can drop content on some iPads.
+      const JsPdf = window.jspdf && window.jspdf.jsPDF;
+
+      if (JsPdf) {
+        const pdf = new JsPdf({
+          unit: "px",
+          format: [exportWidth, exportHeight],
+          orientation,
+          compress: true
+        });
+        pdf.addImage(
+          exportCanvas.toDataURL("image/jpeg", 0.98),
+          "JPEG",
+          0,
+          0,
+          exportWidth,
+          exportHeight
+        );
+        pdf.save(fileName);
+      } else {
+        await html2pdf()
+          .set({
+            margin: 0,
+            filename: fileName,
+            image: {
+              type: "jpeg",
+              quality: 0.98
+            },
+            jsPDF: {
+              unit: "px",
+              format: [exportWidth, exportHeight],
+              orientation,
+              compress: true
+            }
+          })
+          .from(exportCanvas)
+          .save();
+      }
 
       setStatus(
         exportScale < 1
@@ -2906,6 +2965,97 @@ const Workspace = (() => {
     changeZoom(1 - zoomLevel);
   }
 
+  /* ---------- Review sidebar (on-screen measurement checklist) ---------- */
+
+  function toggleReviewSidebar() {
+    if (!els.reviewSidebar) return;
+
+    if (els.reviewSidebar.classList.contains("hidden")) {
+      renderReviewList();
+      els.reviewSidebar.classList.remove("hidden");
+    } else {
+      els.reviewSidebar.classList.add("hidden");
+    }
+  }
+
+  function refreshReviewIfOpen() {
+    if (els.reviewSidebar && !els.reviewSidebar.classList.contains("hidden")) {
+      renderReviewList();
+    }
+  }
+
+  function renderReviewList() {
+    const container = els.reviewList;
+    if (!container) return;
+
+    container.innerHTML = "";
+
+    const typesWithPoints = dataTypes.filter(dt =>
+      points.some(p => p.dataId === dt.id)
+    );
+
+    if (!typesWithPoints.length) {
+      const empty = document.createElement("p");
+      empty.className = "reviewEmpty";
+      empty.textContent = "No points yet. Add points, then reopen Review.";
+      container.appendChild(empty);
+      return;
+    }
+
+    typesWithPoints.forEach(dt => {
+      const section = document.createElement("div");
+      section.className = "reviewSection";
+
+      const header = document.createElement("div");
+      header.className = "reviewTypeHeader";
+      header.textContent = dt.name + (dt.ordered ? "" : "  (not ordered)");
+      header.style.color = dt.color || "#111";
+      section.appendChild(header);
+
+      const list = dt.ordered
+        ? getOrderedPoints(dt.id, dt.direction || "clockwise")
+        : points
+            .filter(p => p.dataId === dt.id)
+            .map(p => ({ point: p, side: "", seq: "" }));
+
+      list.forEach(item => {
+        const row = document.createElement("button");
+        row.type = "button";
+        row.className = "reviewRow";
+
+        const tag = document.createElement("span");
+        tag.className = "reviewTag";
+        tag.textContent = dt.ordered ? `${item.side}${item.seq}` : "•";
+
+        const val = document.createElement("span");
+        val.className = "reviewVal";
+        val.textContent = item.point.measurement || "(empty)";
+
+        row.appendChild(tag);
+        row.appendChild(val);
+        row.addEventListener("click", () => jumpToPoint(item.point));
+
+        section.appendChild(row);
+      });
+
+      container.appendChild(section);
+    });
+  }
+
+  function jumpToPoint(point) {
+    const wrapper = els.drawingWrapper;
+    if (!wrapper) return;
+
+    wrapper.scrollLeft = point.x * zoomLevel - wrapper.clientWidth / 2;
+    wrapper.scrollTop = point.y * zoomLevel - wrapper.clientHeight / 2;
+
+    const element = findPointElement(point.uid);
+    if (element) {
+      element.classList.add("pointFlash");
+      setTimeout(() => element.classList.remove("pointFlash"), 1200);
+    }
+  }
+
   function fitDrawing() {
     const wrapperWidth = Math.max(1, els.drawingWrapper.clientWidth - 24);
     const wrapperHeight = Math.max(1, els.drawingWrapper.clientHeight - 24);
@@ -2921,6 +3071,7 @@ const Workspace = (() => {
 
   function applyZoom() {
     els.drawingArea.style.transform = `scale(${zoomLevel})`;
+    els.drawingArea.style.setProperty("--inv-zoom", String(1 / zoomLevel));
 
     if (els.zoomDisplay) {
       els.zoomDisplay.textContent = Math.round(zoomLevel * 100) + "%";
@@ -3024,6 +3175,7 @@ const Workspace = (() => {
 
   function refreshAllPoints() {
     points.forEach(updatePointElement);
+    refreshReviewIfOpen();
   }
 
   function clearPointSelection() {

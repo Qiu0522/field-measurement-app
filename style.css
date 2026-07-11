@@ -1348,3 +1348,56 @@ button {
   gap: 12px;
   margin: 4px 0 8px;
 }
+
+/* ---------- Overlay controls keep a constant screen size at any zoom ---------- */
+.textNoteDelete,
+.textNoteHandle {
+  transform: scale(var(--inv-zoom, 1));
+  transform-origin: center;
+}
+
+/* ---------- Review sidebar ---------- */
+.reviewSidebar {
+  position: fixed;
+  top: 0; right: 0; bottom: 0;
+  width: min(320px, 85vw);
+  z-index: 4000;
+  background: #fff;
+  border-left: 1px solid var(--border);
+  box-shadow: -8px 0 24px rgba(0,0,0,.15);
+  display: flex;
+  flex-direction: column;
+}
+.reviewHeader {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px; border-bottom: 1px solid var(--border); font-weight: 700;
+}
+.reviewHeader button {
+  width: 34px; height: 34px; border: none; border-radius: 8px;
+  background: rgba(0,0,0,.06); font-size: 20px; line-height: 1;
+}
+.reviewList { flex: 1; overflow-y: auto; padding: 8px 10px; -webkit-overflow-scrolling: touch; }
+.reviewEmpty { color: var(--muted); padding: 12px; }
+.reviewSection { margin-bottom: 14px; }
+.reviewTypeHeader {
+  font-weight: 750; font-size: 13px; text-transform: uppercase;
+  letter-spacing: .4px; margin: 6px 0 4px;
+}
+.reviewRow {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  text-align: left; padding: 11px 10px; border: none; border-bottom: 1px solid #eee;
+  background: transparent; font-size: 16px;
+}
+.reviewRow:active { background: #f2f4f7; }
+.reviewTag { flex: 0 0 48px; font-weight: 700; color: #276ef1; }
+.reviewVal { flex: 1; font-variant-numeric: tabular-nums; }
+
+.point.pointFlash { animation: pointFlash 1.2s ease; }
+@keyframes pointFlash {
+  0%, 100% { box-shadow: none; }
+  30% { box-shadow: 0 0 0 6px rgba(39,110,241,.55); }
+}
+
+/* ---------- Backup reminder ---------- */
+.backupStatus { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
+.backupStatus.warn { color: #a3312c; font-weight: 600; }

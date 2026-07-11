@@ -28,6 +28,7 @@
       <div>
         <h1>Field Measurement</h1>
         <p>Folders and work files are saved automatically on this device.</p>
+        <p id="backupStatus" class="backupStatus"></p>
       </div>
 
       <div class="libraryHeaderActions">
@@ -46,8 +47,14 @@
         <button id="restoreBtn" class="secondaryButton largeButton" type="button">
           ⬆ Restore
         </button>
+
+        <button id="importFileBtn" class="secondaryButton largeButton" type="button">
+          ＋ Import File
+        </button>
       </div>
     </header>
+
+    <input id="importFileInput" type="file" accept=".json,application/json" class="hidden">
 
     <div class="libraryNavigation">
       <button id="upFolderBtn" class="toolbarButton" type="button" disabled>← Back</button>
@@ -80,6 +87,7 @@
           <button id="zoomInBtn" class="toolbarButton iconButton" type="button" title="Zoom In">＋</button>
         </div>
         <button id="fitBtn" class="toolbarButton" type="button"><svg class="uiIcon" viewBox="0 0 24 24"><path d="M8 3H3v5m13-5h5v5M8 21H3v-5m13 5h5v-5"/></svg>Fit</button>
+        <button id="reviewBtn" class="toolbarButton" type="button"><svg class="uiIcon" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></svg>Review</button>
         <button id="undoBtn" class="toolbarButton iconButton" type="button" title="Undo"><svg class="uiIcon" viewBox="0 0 24 24"><path d="M9 7 4 12l5 5M5 12h8a6 6 0 0 1 6 6"/></svg></button>
         <button id="redoBtn" class="toolbarButton iconButton" type="button" title="Redo"><svg class="uiIcon" viewBox="0 0 24 24"><path d="m15 7 5 5-5 5m4-5h-8a6 6 0 0 0-6 6"/></svg></button>
         <button id="manualSaveBtn" class="toolbarButton saveButton" type="button"><svg class="uiIcon" viewBox="0 0 24 24"><path d="M5 3h12l2 2v16H5zM8 3v6h8V3M8 21v-8h8v8"/></svg>Save</button>
@@ -161,6 +169,14 @@
         <canvas id="commentCanvas"></canvas>
       </div>
     </div>
+    <aside id="reviewSidebar" class="reviewSidebar hidden">
+      <div class="reviewHeader">
+        <span>Review measurements</span>
+        <button id="closeReviewBtn" type="button" aria-label="Close">×</button>
+      </div>
+      <div id="reviewList" class="reviewList"></div>
+    </aside>
+
     <div id="workspaceStatusBar">
       <span id="status" class="statusText">Ready.</span>
       <span id="saveIndicator" class="saveIndicator">✓ Saved</span>
@@ -176,7 +192,19 @@
   <div id="libraryContextMenu" class="popupMenu hidden">
     <button id="renameLibraryAction" type="button">Rename</button>
     <button id="duplicateLibraryAction" type="button">Duplicate</button>
+    <button id="exportFileAction" type="button">Export File</button>
     <button id="deleteLibraryAction" class="dangerText" type="button">Delete</button>
+  </div>
+
+  <div id="renameModal" class="modalBackdrop hidden">
+    <div class="modalCard">
+      <h2 id="renameModalTitle">Rename</h2>
+      <label>Name<input id="renameInput" type="text" maxlength="80"></label>
+      <div class="modalActions">
+        <button id="cancelRenameBtn" type="button">Cancel</button>
+        <button id="confirmRenameBtn" class="primaryButton" type="button">Save</button>
+      </div>
+    </div>
   </div>
 
   <div id="pointContextMenu" class="popupMenu hidden">

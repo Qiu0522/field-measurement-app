@@ -6,6 +6,7 @@ const App = (() => {
 
   let currentFolderId = null;
   let currentMenuItem = null;
+  let pendingRename = null;
 
   let pendingProjectKind = null;
   let pendingPdfData = null;
@@ -48,6 +49,15 @@ const App = (() => {
     els.renameLibraryAction = document.getElementById("renameLibraryAction");
     els.duplicateLibraryAction = document.getElementById("duplicateLibraryAction");
     els.deleteLibraryAction = document.getElementById("deleteLibraryAction");
+    els.exportFileAction = document.getElementById("exportFileAction");
+    els.importFileBtn = document.getElementById("importFileBtn");
+    els.importFileInput = document.getElementById("importFileInput");
+    els.backupStatus = document.getElementById("backupStatus");
+    els.renameModal = document.getElementById("renameModal");
+    els.renameModalTitle = document.getElementById("renameModalTitle");
+    els.renameInput = document.getElementById("renameInput");
+    els.cancelRenameBtn = document.getElementById("cancelRenameBtn");
+    els.confirmRenameBtn = document.getElementById("confirmRenameBtn");
 
     els.folderModal = document.getElementById("folderModal");
     els.folderNameInput = document.getElementById("folderNameInput");
@@ -136,6 +146,26 @@ const App = (() => {
     els.duplicateLibraryAction.addEventListener("click", duplicateSelectedItem);
     els.deleteLibraryAction.addEventListener("click", deleteSelectedItem);
 
+    els.exportFileAction.addEventListener("click", exportSelectedFile);
+
+    els.importFileBtn.addEventListener("click", () => {
+      els.importFileInput.value = "";
+      els.importFileInput.click();
+    });
+    els.importFileInput.addEventListener("change", handleImportFile);
+
+    els.cancelRenameBtn.addEventListener("click", () => {
+      pendingRename = null;
+      els.renameModal.classList.add("hidden");
+    });
+    els.confirmRenameBtn.addEventListener("click", confirmRename);
+    els.renameInput.addEventListener("keydown", event => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        confirmRename();
+      }
+    });
+
     document.addEventListener("click", event => {
       if (!els.newProjectMenu.contains(event.target)) {
         els.newProjectMenu.classList.add("hidden");
@@ -160,6 +190,7 @@ const App = (() => {
       ProjectDB.getAllFolders()
     ]);
 
+    updateBackupStatus();
     renderLibrary();
   }
 
@@ -281,6 +312,11 @@ const App = (() => {
       currentMenuItem = item;
 
       els.duplicateLibraryAction.classList.toggle(
+        "hidden",
+        item.type === "folder"
+      );
+
+      els.exportFileAction.classList.toggle(
         "hidden",
         item.type === "folder"
       );
@@ -515,47 +551,141 @@ const App = (() => {
     }
   }
 
-  async function renameSelectedItem() {
+  function renameSelectedItem() {
     hideMenus();
     if (!currentMenuItem) return;
 
-    if (currentMenuItem.type === "folder") {
-      const folder = folders.find(item => item.id === currentMenuItem.id);
-      if (!folder) return;
+    const record = currentMenuItem.type === "folder"
+      ? folders.find(item => item.id === currentMenuItem.id)
+      : projects.find(item => item.id === currentMenuItem.id);
+    if (!record) return;
 
-      const name = prompt("New folder name:", folder.name);
-      if (!name?.trim()) return;
+    pendingRename = { type: currentMenuItem.type, id: currentMenuItem.id };
+    els.renameModalTitle.textContent =
+      currentMenuItem.type === "folder" ? "Rename Folder" : "Rename File";
+    els.renameInput.value = record.name;
+    els.renameModal.classList.remove("hidden");
+
+    setTimeout(() => {
+      els.renameInput.focus();
+      els.renameInput.select();
+    }, 30);
+  }
+
+  async function confirmRename() {
+    if (!pendingRename) return;
+
+    const name = els.renameInput.value.trim();
+    if (!name) return;
+
+    if (pendingRename.type === "folder") {
+      const folder = folders.find(item => item.id === pendingRename.id);
+      if (!folder) { closeRenameModal(); return; }
 
       if (findSiblingByName("folder", name, folder.parentId || null, folder.id)) {
-        alert(`A folder named "${name.trim()}" already exists here. Please choose a different name.`);
+        alert(`A folder named "${name}" already exists here. Please choose a different name.`);
         return;
       }
 
-      folder.name = name.trim();
+      folder.name = name;
       await ProjectDB.saveFolder(folder);
     } else {
-      const project = projects.find(item => item.id === currentMenuItem.id);
-      if (!project) return;
-
-      const name = prompt("New work file name:", project.name);
-      if (!name?.trim()) return;
+      const project = projects.find(item => item.id === pendingRename.id);
+      if (!project) { closeRenameModal(); return; }
 
       const duplicate = findSiblingByName("project", name, project.folderId || null, project.id);
       if (duplicate) {
         const replace = confirm(
-          `A work file named "${name.trim()}" already exists here.\n\n` +
+          `A work file named "${name}" already exists here.\n\n` +
           "OK = Replace it (the old file is deleted)\n" +
-          "Cancel = keep the current name"
+          "Cancel = keep editing the name"
         );
         if (!replace) return;
         await ProjectDB.deleteProject(duplicate.id);
       }
 
-      project.name = name.trim();
+      project.name = name;
       await ProjectDB.saveProject(project);
     }
 
+    closeRenameModal();
     await refreshLibrary();
+  }
+
+  function closeRenameModal() {
+    pendingRename = null;
+    els.renameModal.classList.add("hidden");
+  }
+
+  async function exportSelectedFile() {
+    hideMenus();
+
+    if (!currentMenuItem || currentMenuItem.type !== "project") {
+      alert("Only work files can be exported to a single file. For folders, use Backup.");
+      return;
+    }
+
+    try {
+      const project = projects.find(item => item.id === currentMenuItem.id);
+      const data = await ProjectDB.exportProject(currentMenuItem.id);
+      const safeName = (project?.name || "file").replace(/[^\w\-]+/g, "_");
+
+      downloadBlob(
+        new Blob([JSON.stringify(data)], { type: "application/json" }),
+        `${safeName}.fmfile.json`
+      );
+    } catch (error) {
+      alert("Export failed: " + explainDbError(error));
+    }
+  }
+
+  async function handleImportFile(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    let data;
+    try {
+      data = JSON.parse(await file.text());
+    } catch (error) {
+      alert("That file could not be read.");
+      return;
+    }
+
+    if (!data || data.format !== "field-measurement-file") {
+      alert("That is not a single-file export. For a whole-library backup file, use Restore instead.");
+      return;
+    }
+
+    try {
+      const record = await ProjectDB.importProject(data, currentFolderId);
+      await refreshLibrary();
+      alert(`Imported "${record.name}" into this folder.`);
+    } catch (error) {
+      alert("Import failed: " + explainDbError(error));
+    }
+  }
+
+  function updateBackupStatus() {
+    if (!els.backupStatus) return;
+
+    let raw = null;
+    try { raw = localStorage.getItem("fm_lastBackupAt"); } catch (_) {}
+
+    if (!raw) {
+      els.backupStatus.textContent =
+        "No backup yet — press Backup to save a copy you can restore.";
+      els.backupStatus.classList.add("warn");
+      return;
+    }
+
+    const days = Math.floor((Date.now() - Number(raw)) / 86400000);
+
+    if (days <= 0) {
+      els.backupStatus.textContent = "Last backup: today.";
+    } else {
+      els.backupStatus.textContent = `Last backup: ${days} day${days > 1 ? "s" : ""} ago.`;
+    }
+    els.backupStatus.classList.toggle("warn", days >= 7);
   }
 
   async function duplicateSelectedItem() {
@@ -607,6 +737,9 @@ const App = (() => {
         new Blob([JSON.stringify(backup)], { type: "application/json" }),
         `field-measurement-backup-${stamp}.json`
       );
+
+      try { localStorage.setItem("fm_lastBackupAt", String(Date.now())); } catch (_) {}
+      updateBackupStatus();
 
       alert(
         "Backup saved.\n\n" +

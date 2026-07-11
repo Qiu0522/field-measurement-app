@@ -499,10 +499,74 @@ const ProjectDB = (() => {
     });
   }
 
+  /* ---------- Single-file export / import (share one work file) ---------- */
+
+  async function exportProject(id) {
+    const project = await getProject(id);
+    if (!project) throw new Error("File not found.");
+
+    const copy = { ...project };
+
+    if (copy.pdfData instanceof ArrayBuffer) {
+      copy.pdfData = arrayBufferToBase64(copy.pdfData);
+      copy._pdfIsBase64 = true;
+    } else {
+      delete copy.pdfData;
+    }
+    delete copy._assetSaved;
+
+    return {
+      format: "field-measurement-file",
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      project: copy
+    };
+  }
+
+  async function importProject(fileData, folderId) {
+    if (!fileData || fileData.format !== "field-measurement-file" || !fileData.project) {
+      throw new Error("This file is not a Field Measurement file export.");
+    }
+
+    const source = fileData.project;
+    const newId = makeId("project");
+
+    const record = {
+      ...source,
+      id: newId,
+      folderId: folderId || null,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+
+    let pdfBuffer = null;
+    if (record._pdfIsBase64 && typeof record.pdfData === "string") {
+      pdfBuffer = base64ToArrayBuffer(record.pdfData);
+      delete record._pdfIsBase64;
+    }
+    delete record.pdfData;
+    delete record._assetSaved;
+
+    return enqueueWrite(async () => {
+      await runRequest(PROJECTS, "readwrite", store => store.put(record));
+
+      if (pdfBuffer) {
+        await runRequest(ASSETS, "readwrite", store => store.put({
+          projectId: newId,
+          pdfData: pdfBuffer
+        }));
+      }
+
+      return record;
+    });
+  }
+
   return {
     open,
     exportAll,
     importAll,
+    exportProject,
+    importProject,
     getAllProjects,
     getProject,
     saveProject,
