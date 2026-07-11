@@ -47,6 +47,7 @@ const Workspace = (() => {
   let commentImageData = "";
   let commentFingerPan = null;
   let pendingTextPosition = null;
+  let highlightPoints = [];
 
   let measurementCallback = null;
   let measurementRawValue = "";
@@ -204,6 +205,17 @@ const Workspace = (() => {
     els.textBtn.addEventListener("click", () => toggleCommentTool("text"));
     els.highlighterBtn.addEventListener("click", () => toggleCommentTool("highlighter"));
     els.eraserBtn.addEventListener("click", () => toggleCommentTool("eraser"));
+
+    if (els.markupSummary) {
+      els.markupSummary.addEventListener("click", event => {
+        // If a markup tool is active, one tap on "Markup" turns it off
+        // (and does not re-open the menu).
+        if (commentTool !== "none") {
+          event.preventDefault();
+          toggleCommentTool(commentTool);
+        }
+      });
+    }
     els.colorSwatches.forEach(button => {
       button.addEventListener("click", () => {
         brushColor = button.dataset.brushColor;
@@ -1854,6 +1866,10 @@ const Workspace = (() => {
       lastCommentX = position.x;
       lastCommentY = position.y;
       lastCommentPressure = normalisePressure(event);
+
+      if (commentTool === "highlighter") {
+        highlightPoints = [{ x: position.x, y: position.y }];
+      }
     });
 
     els.commentCanvas.addEventListener("pointermove", event => {
@@ -1917,6 +1933,9 @@ const Workspace = (() => {
         lastCommentX = position.x;
         lastCommentY = position.y;
         lastCommentPressure = position.pressure;
+        if (commentTool === "highlighter") {
+          highlightPoints.push({ x: position.x, y: position.y });
+        }
       });
       context.lineTo(lastCommentX, lastCommentY);
       context.stroke();
@@ -1980,6 +1999,12 @@ const Workspace = (() => {
     if (!isDrawingComment) return;
 
     isDrawingComment = false;
+
+    if (commentTool === "highlighter" && highlightPoints.length > 0) {
+      commitHighlighterStroke();
+      return;
+    }
+
     const after = els.commentCanvas.toDataURL();
 
     pushUndo({
@@ -1990,6 +2015,64 @@ const Workspace = (() => {
 
     commentImageData = after;
     scheduleAutoSave();
+  }
+
+  /*
+    Re-draw the whole highlighter stroke once, as a single semi-transparent
+    path behind the ink. Drawing it in one pass (instead of one short segment
+    per pointer move) removes the "string of beads" look caused by round caps
+    on overlapping destination-over segments.
+  */
+  function commitHighlighterStroke() {
+    const points = highlightPoints;
+    highlightPoints = [];
+
+    const before = commentBeforeStroke;
+    const context = els.commentCanvas.getContext("2d");
+
+    const paint = () => {
+      context.save();
+      context.globalCompositeOperation = "destination-over";
+      context.globalAlpha = 0.14;
+      context.strokeStyle = brushColor;
+      context.lineWidth = brushWidth * 4;
+      context.lineCap = "round";
+      context.lineJoin = "round";
+
+      context.beginPath();
+      context.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i += 1) {
+        context.lineTo(points[i].x, points[i].y);
+      }
+      if (points.length === 1) {
+        context.lineTo(points[0].x + 0.01, points[0].y);
+      }
+      context.stroke();
+      context.restore();
+
+      const after = els.commentCanvas.toDataURL();
+      pushUndo({ type: "comment", before, after });
+      commentImageData = after;
+      scheduleAutoSave();
+    };
+
+    const clearAndPaint = () => {
+      context.clearRect(0, 0, els.commentCanvas.width, els.commentCanvas.height);
+      paint();
+    };
+
+    if (before) {
+      const image = new Image();
+      image.onload = () => {
+        context.clearRect(0, 0, els.commentCanvas.width, els.commentCanvas.height);
+        context.drawImage(image, 0, 0);
+        paint();
+      };
+      image.onerror = clearAndPaint;
+      image.src = before;
+    } else {
+      clearAndPaint();
+    }
   }
 
   function restoreCommentImage(dataUrl) {
