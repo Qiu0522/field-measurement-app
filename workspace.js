@@ -53,6 +53,7 @@ const Workspace = (() => {
   let selectedNoteId = null;
   let editingNoteId = null;
   let noteDrag = null;
+  let textNoteColor = "#ff0000";
 
   let measurementCallback = null;
   let measurementRawValue = "";
@@ -84,6 +85,7 @@ const Workspace = (() => {
     els.highlighterBtn = document.getElementById("highlighterBtn");
     els.eraserBtn = document.getElementById("eraserBtn");
     els.colorSwatches = Array.from(document.querySelectorAll("[data-brush-color]"));
+    els.textColorSwatches = Array.from(document.querySelectorAll("[data-text-color]"));
     els.sizeChoices = Array.from(document.querySelectorAll("[data-brush-size]"));
     els.undoBtn = document.getElementById("undoBtn");
     els.redoBtn = document.getElementById("redoBtn");
@@ -134,7 +136,6 @@ const Workspace = (() => {
     els.missingValueBtn = document.getElementById("missingValueBtn");
     els.textModal = document.getElementById("textModal");
     els.textInput = document.getElementById("textInput");
-    els.textSizeInput = document.getElementById("textSizeInput");
     els.cancelTextBtn = document.getElementById("cancelTextBtn");
     els.confirmTextBtn = document.getElementById("confirmTextBtn");
     els.cancelMeasurementBtn = document.getElementById("cancelMeasurementBtn");
@@ -223,11 +224,23 @@ const Workspace = (() => {
     }
     els.colorSwatches.forEach(button => {
       button.addEventListener("click", () => {
-        brushColor = button.dataset.brushColor;
-        updateBrushControls();
+        brushColor = button.dataset.brushColor;        updateBrushControls();
         scheduleAutoSave();
       });
     });
+
+    els.textColorSwatches.forEach(button => {
+      button.addEventListener("click", () => {
+        setTextColor(button.dataset.textColor);
+      });
+    });
+
+    if (els.markupMenu) {
+      els.markupMenu.addEventListener("toggle", () => {
+        if (els.markupMenu.open) positionMarkupPanel();
+      });
+    }
+
     els.sizeChoices.forEach(button => {
       button.addEventListener("click", () => {
         brushWidth = Number(button.dataset.brushSize) || 5;
@@ -1854,6 +1867,7 @@ const Workspace = (() => {
         pendingTextPosition = position;
         editingNoteId = null;
         els.textInput.value = "";
+        setTextColor(textNoteColor);
         els.textModal.classList.remove("hidden");
         setTimeout(() => els.textInput.focus(), 0);
         return;
@@ -1937,7 +1951,7 @@ const Workspace = (() => {
         // Draw behind all existing ink on the annotation canvas, while the
         // whole annotation canvas still remains above the PDF drawing.
         context.globalCompositeOperation = "destination-over";
-        context.globalAlpha = 0.35;
+        context.globalAlpha = 0.75;
         context.strokeStyle = brushColor;
         context.lineWidth = brushWidth * 4;
       } else {
@@ -1995,13 +2009,13 @@ const Workspace = (() => {
 
   function confirmTextPlacement() {
     const value = els.textInput.value.trim();
-    const size = Number(els.textSizeInput.value) || 24;
 
     if (editingNoteId) {
       const note = textNotes.find(item => item.id === editingNoteId);
       if (note && value) {
         const before = snapshotTextNotes();
         note.text = value;
+        note.color = textNoteColor;
         updateTextNoteElement(note);
         pushUndo({ type: "textNotes", before, after: snapshotTextNotes() });
         scheduleAutoSave();
@@ -2017,10 +2031,44 @@ const Workspace = (() => {
       return;
     }
 
-    addTextNote(pendingTextPosition.x, pendingTextPosition.y, value, size, brushColor);
+    addTextNote(pendingTextPosition.x, pendingTextPosition.y, value, 24, textNoteColor);
     pendingTextPosition = null;
     els.textModal.classList.add("hidden");
     setStatus("Text added. Turn Markup off to move or resize it.");
+  }
+
+  function setTextColor(color) {
+    textNoteColor = color || "#111111";
+    if (els.textColorSwatches) {
+      els.textColorSwatches.forEach(button => {
+        button.classList.toggle("selected", button.dataset.textColor === textNoteColor);
+      });
+    }
+  }
+
+  /* Keep the markup dropdown fully on-screen (it can open off the right edge). */
+  function positionMarkupPanel() {
+    const panel = els.markupMenu.querySelector(".markupMenuPanel");
+    if (!panel) return;
+
+    panel.style.left = "0px";
+    panel.style.right = "auto";
+
+    requestAnimationFrame(() => {
+      const margin = 8;
+      let rect = panel.getBoundingClientRect();
+
+      const overflowRight = rect.right - (window.innerWidth - margin);
+      if (overflowRight > 0) {
+        panel.style.left = (-overflowRight) + "px";
+      }
+
+      rect = panel.getBoundingClientRect();
+      if (rect.left < margin) {
+        const current = parseFloat(panel.style.left) || 0;
+        panel.style.left = (current + (margin - rect.left)) + "px";
+      }
+    });
   }
 
   /* ---------- Movable / resizable text notes (DOM elements) ---------- */
@@ -2083,6 +2131,7 @@ const Workspace = (() => {
     editingNoteId = id;
     pendingTextPosition = null;
     els.textInput.value = note.text;
+    setTextColor(note.color || "#111111");
     els.textModal.classList.remove("hidden");
     setTimeout(() => els.textInput.focus(), 0);
   }
@@ -2274,7 +2323,7 @@ const Workspace = (() => {
     const paint = () => {
       context.save();
       context.globalCompositeOperation = "destination-over";
-      context.globalAlpha = 0.35;
+      context.globalAlpha = 0.75;
       context.strokeStyle = brushColor;
       context.lineWidth = brushWidth * 4;
       context.lineCap = "round";

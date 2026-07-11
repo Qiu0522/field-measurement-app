@@ -324,9 +324,14 @@
     <div class="modalCard textCard">
       <h2>Add Text</h2>
       <label>Text<input id="textInput" type="text" maxlength="160" placeholder="Type a note"></label>
-      <label>Size
-        <select id="textSizeInput"><option value="18">Small</option><option value="24" selected>Medium</option><option value="32">Large</option></select>
-      </label>
+      <span class="markupSectionLabel">Color</span>
+      <div class="textColorRow">
+        <button class="colorSwatch selected" data-text-color="#ff0000" style="--swatch:#ff0000" title="Red" type="button"></button>
+        <button class="colorSwatch" data-text-color="#0066ff" style="--swatch:#0066ff" title="Blue" type="button"></button>
+        <button class="colorSwatch" data-text-color="#111111" style="--swatch:#111111" title="Black" type="button"></button>
+        <button class="colorSwatch" data-text-color="#00a040" style="--swatch:#00a040" title="Green" type="button"></button>
+        <button class="colorSwatch" data-text-color="#ffd400" style="--swatch:#ffd400" title="Yellow" type="button"></button>
+      </div>
       <div class="modalActions">
         <button id="cancelTextBtn" type="button">Cancel</button>
         <button id="confirmTextBtn" class="primaryButton" type="button">Add</button>
