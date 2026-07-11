@@ -49,6 +49,11 @@ const Workspace = (() => {
   let pendingTextPosition = null;
   let highlightPoints = [];
 
+  let textNotes = [];
+  let selectedNoteId = null;
+  let editingNoteId = null;
+  let noteDrag = null;
+
   let measurementCallback = null;
   let measurementRawValue = "";
 
@@ -493,6 +498,7 @@ const Workspace = (() => {
 
     points = clone(state.points || []);
     dataTypes = clone(state.dataTypes || DEFAULT_DATA_TYPES);
+    textNotes = clone(state.textNotes || []);
 
     dataTypes.forEach(dataType => {
       if (typeof dataType.ordered !== "boolean") dataType.ordered = false;
@@ -530,6 +536,10 @@ const Workspace = (() => {
     }
 
     points.forEach(createPointElement);
+
+    removeAllTextNoteElements();
+    selectedNoteId = null;
+    textNotes.forEach(createTextNoteElement);
 
     if (commentImageData) {
       await restoreCommentImage(commentImageData);
@@ -766,6 +776,8 @@ const Workspace = (() => {
     if (tapReorderState) return;
     if (event.target.classList.contains("point")) return;
     if (commentTool !== "none") return;
+
+    deselectTextNotes();
 
     const position = getDrawingPosition(event);
 
@@ -1829,6 +1841,7 @@ const Workspace = (() => {
         event.preventDefault();
         const position = getCanvasPosition(event);
         pendingTextPosition = position;
+        editingNoteId = null;
         els.textInput.value = "";
         els.textModal.classList.remove("hidden");
         setTimeout(() => els.textInput.focus(), 0);
@@ -1965,34 +1978,251 @@ const Workspace = (() => {
 
   function cancelTextPlacement() {
     pendingTextPosition = null;
+    editingNoteId = null;
     els.textModal.classList.add("hidden");
   }
 
   function confirmTextPlacement() {
     const value = els.textInput.value.trim();
-    if (!value || !pendingTextPosition) return;
-    const before = commentImageData;
-    const context = els.commentCanvas.getContext("2d");
     const size = Number(els.textSizeInput.value) || 24;
-    context.save();
-    context.globalAlpha = 1;
-    context.globalCompositeOperation = "source-over";
-    context.font = `600 ${size}px -apple-system, BlinkMacSystemFont, sans-serif`;
-    context.textBaseline = "top";
-    context.lineJoin = "round";
-    context.lineWidth = Math.max(3, size / 7);
-    context.strokeStyle = "white";
-    context.fillStyle = brushColor;
-    context.strokeText(value, pendingTextPosition.x, pendingTextPosition.y);
-    context.fillText(value, pendingTextPosition.x, pendingTextPosition.y);
-    context.restore();
-    const after = els.commentCanvas.toDataURL();
-    pushUndo({ type: "comment", before, after });
-    commentImageData = after;
+
+    if (editingNoteId) {
+      const note = textNotes.find(item => item.id === editingNoteId);
+      if (note && value) {
+        const before = snapshotTextNotes();
+        note.text = value;
+        updateTextNoteElement(note);
+        pushUndo({ type: "textNotes", before, after: snapshotTextNotes() });
+        scheduleAutoSave();
+      }
+      editingNoteId = null;
+      els.textModal.classList.add("hidden");
+      return;
+    }
+
+    if (!value || !pendingTextPosition) {
+      pendingTextPosition = null;
+      els.textModal.classList.add("hidden");
+      return;
+    }
+
+    addTextNote(pendingTextPosition.x, pendingTextPosition.y, value, size, brushColor);
     pendingTextPosition = null;
     els.textModal.classList.add("hidden");
+    setStatus("Text added. Turn Markup off to move or resize it.");
+  }
+
+  /* ---------- Movable / resizable text notes (DOM elements) ---------- */
+
+  function makeNoteId() {
+    return "note_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  }
+
+  function snapshotTextNotes() {
+    return textNotes.map(note => ({ ...note }));
+  }
+
+  function restoreTextNotes(snapshot) {
+    textNotes = snapshot.map(note => ({ ...note }));
+    selectedNoteId = null;
+    removeAllTextNoteElements();
+    textNotes.forEach(createTextNoteElement);
+  }
+
+  function addTextNote(x, y, text, size, color) {
+    const before = snapshotTextNotes();
+
+    const note = {
+      id: makeNoteId(),
+      x,
+      y,
+      text,
+      size: size || 24,
+      color: color || "#000000"
+    };
+
+    textNotes.push(note);
+    createTextNoteElement(note);
+    selectTextNote(note.id);
+
+    pushUndo({ type: "textNotes", before, after: snapshotTextNotes() });
     scheduleAutoSave();
-    setStatus("Text added.");
+  }
+
+  function removeTextNote(id) {
+    const index = textNotes.findIndex(note => note.id === id);
+    if (index < 0) return;
+
+    const before = snapshotTextNotes();
+    textNotes.splice(index, 1);
+
+    const element = findTextNoteElement(id);
+    if (element) element.remove();
+    if (selectedNoteId === id) selectedNoteId = null;
+
+    pushUndo({ type: "textNotes", before, after: snapshotTextNotes() });
+    scheduleAutoSave();
+    setStatus("Text deleted.");
+  }
+
+  function editTextNote(id) {
+    const note = textNotes.find(item => item.id === id);
+    if (!note) return;
+
+    editingNoteId = id;
+    pendingTextPosition = null;
+    els.textInput.value = note.text;
+    els.textModal.classList.remove("hidden");
+    setTimeout(() => els.textInput.focus(), 0);
+  }
+
+  function selectTextNote(id) {
+    selectedNoteId = id;
+    els.drawingArea.querySelectorAll(".textNote").forEach(element => {
+      element.classList.toggle("selected", element.dataset.id === id);
+    });
+  }
+
+  function deselectTextNotes() {
+    if (!selectedNoteId) return;
+    selectedNoteId = null;
+    els.drawingArea.querySelectorAll(".textNote.selected")
+      .forEach(element => element.classList.remove("selected"));
+  }
+
+  function findTextNoteElement(id) {
+    return els.drawingArea.querySelector(`.textNote[data-id="${id}"]`);
+  }
+
+  function removeAllTextNoteElements() {
+    els.drawingArea.querySelectorAll(".textNote")
+      .forEach(element => element.remove());
+  }
+
+  function updateTextNoteElement(note) {
+    const element = findTextNoteElement(note.id);
+    if (!element) return;
+
+    const textSpan = element.querySelector(".textNoteText");
+    if (textSpan) textSpan.textContent = note.text;
+
+    element.style.left = note.x + "px";
+    element.style.top = note.y + "px";
+    element.style.fontSize = note.size + "px";
+    element.style.color = note.color || "#000000";
+  }
+
+  function createTextNoteElement(note) {
+    const existing = findTextNoteElement(note.id);
+    if (existing) existing.remove();
+
+    const element = document.createElement("div");
+    element.className = "textNote";
+    element.dataset.id = note.id;
+
+    const textSpan = document.createElement("span");
+    textSpan.className = "textNoteText";
+    textSpan.textContent = note.text;
+    element.appendChild(textSpan);
+
+    const del = document.createElement("button");
+    del.className = "textNoteDelete";
+    del.type = "button";
+    del.textContent = "×";
+    del.setAttribute("aria-label", "Delete text");
+    element.appendChild(del);
+
+    const handle = document.createElement("div");
+    handle.className = "textNoteHandle";
+    element.appendChild(handle);
+
+    del.addEventListener("pointerdown", event => event.stopPropagation());
+    del.addEventListener("click", event => {
+      event.stopPropagation();
+      removeTextNote(note.id);
+    });
+
+    element.addEventListener("click", event => event.stopPropagation());
+
+    // Resize by dragging the corner handle: the note's height follows the
+    // handle, so font size = pointer Y minus the note's top.
+    handle.addEventListener("pointerdown", event => {
+      event.stopPropagation();
+      event.preventDefault();
+      selectTextNote(note.id);
+
+      noteDrag = { id: note.id, mode: "resize", before: snapshotTextNotes() };
+      try { handle.setPointerCapture(event.pointerId); } catch (_) {}
+    });
+
+    handle.addEventListener("pointermove", event => {
+      if (!noteDrag || noteDrag.mode !== "resize" || noteDrag.id !== note.id) return;
+      event.preventDefault();
+      const position = getDrawingPosition(event);
+      note.size = Math.max(12, Math.min(240, Math.round(position.y - note.y)));
+      updateTextNoteElement(note);
+    });
+
+    const endResize = event => {
+      if (!noteDrag || noteDrag.mode !== "resize" || noteDrag.id !== note.id) return;
+      pushUndo({ type: "textNotes", before: noteDrag.before, after: snapshotTextNotes() });
+      noteDrag = null;
+      scheduleAutoSave();
+    };
+    handle.addEventListener("pointerup", endResize);
+    handle.addEventListener("pointercancel", endResize);
+
+    // Move by dragging the body; a tap (no move) selects, then edits.
+    element.addEventListener("pointerdown", event => {
+      if (pinchActive) return;
+      event.stopPropagation();
+
+      noteDrag = {
+        id: note.id,
+        mode: "move",
+        startX: event.clientX,
+        startY: event.clientY,
+        origX: note.x,
+        origY: note.y,
+        moved: false,
+        before: snapshotTextNotes()
+      };
+      try { element.setPointerCapture(event.pointerId); } catch (_) {}
+    });
+
+    element.addEventListener("pointermove", event => {
+      if (!noteDrag || noteDrag.mode !== "move" || noteDrag.id !== note.id) return;
+      event.preventDefault();
+
+      const dx = (event.clientX - noteDrag.startX) / zoomLevel;
+      const dy = (event.clientY - noteDrag.startY) / zoomLevel;
+
+      if (!noteDrag.moved && Math.hypot(dx, dy) > 3) noteDrag.moved = true;
+
+      note.x = noteDrag.origX + dx;
+      note.y = noteDrag.origY + dy;
+      updateTextNoteElement(note);
+    });
+
+    const endMove = () => {
+      if (!noteDrag || noteDrag.mode !== "move" || noteDrag.id !== note.id) return;
+
+      if (noteDrag.moved) {
+        pushUndo({ type: "textNotes", before: noteDrag.before, after: snapshotTextNotes() });
+        scheduleAutoSave();
+      } else if (selectedNoteId === note.id) {
+        editTextNote(note.id);
+      } else {
+        selectTextNote(note.id);
+      }
+
+      noteDrag = null;
+    };
+    element.addEventListener("pointerup", endMove);
+    element.addEventListener("pointercancel", endMove);
+
+    els.drawingArea.appendChild(element);
+    updateTextNoteElement(note);
   }
 
   function finishStroke() {
@@ -2189,6 +2419,10 @@ const Workspace = (() => {
       restoreCommentImage(action.before);
     }
 
+    if (action.type === "textNotes") {
+      restoreTextNotes(action.before);
+    }
+
     redoStack.push(action);
     updateUndoRedoButtons();
     scheduleAutoSave();
@@ -2255,6 +2489,10 @@ const Workspace = (() => {
 
     if (action.type === "comment") {
       restoreCommentImage(action.after);
+    }
+
+    if (action.type === "textNotes") {
+      restoreTextNotes(action.after);
     }
 
     undoStack.push(action);
@@ -2474,6 +2712,18 @@ const Workspace = (() => {
         context.fillText(label, point.x, point.y);
       });
 
+      // Movable text notes.
+      context.textAlign = "left";
+      context.textBaseline = "top";
+      textNotes.forEach(note => {
+        context.font = `600 ${note.size}px -apple-system, BlinkMacSystemFont, Arial, sans-serif`;
+        context.lineWidth = Math.max(2, note.size / 7);
+        context.strokeStyle = "#ffffff";
+        context.strokeText(note.text, note.x, note.y);
+        context.fillStyle = note.color || "#000000";
+        context.fillText(note.text, note.x, note.y);
+      });
+
       context.restore();
 
       await html2pdf()
@@ -2533,6 +2783,7 @@ const Workspace = (() => {
     project.state = {
       points,
       dataTypes,
+      textNotes,
       pointMode,
       showOrderLabels,
       zoomLevel,
@@ -2665,6 +2916,7 @@ const Workspace = (() => {
     draggedPoint = null;
     movingPoint = null;
     isDrawingComment = false;
+    noteDrag = null;
     els.drawingWrapper.classList.remove("pointDragActive");
 
     const moving = els.drawingArea.querySelector(".point.movingPoint");
