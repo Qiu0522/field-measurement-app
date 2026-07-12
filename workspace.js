@@ -58,6 +58,7 @@ const Workspace = (() => {
   let editingNoteId = null;
   let noteDrag = null;
   let textNoteColor = "#ff0000";
+  let reviewFilter = "all";
 
   let measurementCallback = null;
   let measurementRawValue = "";
@@ -73,7 +74,7 @@ const Workspace = (() => {
   const els = {};
 
   pdfjsLib.GlobalWorkerOptions.workerSrc =
-    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    "lib/pdf.worker.min.js";
 
   function init() {
     els.workspaceView = document.getElementById("workspaceView");
@@ -233,7 +234,8 @@ const Workspace = (() => {
     }
     els.colorSwatches.forEach(button => {
       button.addEventListener("click", () => {
-        brushColor = button.dataset.brushColor;        updateBrushControls();
+        brushColor = button.dataset.brushColor;
+        updateBrushControls();
         scheduleAutoSave();
       });
     });
@@ -2068,7 +2070,13 @@ const Workspace = (() => {
     addTextNote(pendingTextPosition.x, pendingTextPosition.y, value, 24, textNoteColor);
     pendingTextPosition = null;
     els.textModal.classList.add("hidden");
-    setStatus("Text added. Turn Markup off to move or resize it.");
+
+    // Turn the Text tool off after placing one, so the next tap doesn't add
+    // another box. (Tap Text again to place more.) This also makes the new
+    // box immediately draggable/editable.
+    if (commentTool === "text") toggleCommentTool("text");
+
+    setStatus("Text added. Tap it to move, resize, or edit.");
   }
 
   function setTextColor(color) {
@@ -3002,7 +3010,42 @@ const Workspace = (() => {
       return;
     }
 
+    // If the filtered type no longer has points, fall back to All.
+    if (reviewFilter !== "all" && !typesWithPoints.some(dt => dt.id === reviewFilter)) {
+      reviewFilter = "all";
+    }
+
+    // Filter chips: All + one per data type that has points.
+    const filterBar = document.createElement("div");
+    filterBar.className = "reviewFilterBar";
+
+    const makeChip = (label, value, color) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "reviewChip" + (reviewFilter === value ? " active" : "");
+      chip.textContent = label;
+      if (color && reviewFilter === value) {
+        chip.style.background = color;
+        chip.style.borderColor = color;
+      }
+      chip.addEventListener("click", () => {
+        reviewFilter = value;
+        renderReviewList();
+      });
+      return chip;
+    };
+
+    filterBar.appendChild(makeChip("All", "all", null));
     typesWithPoints.forEach(dt => {
+      filterBar.appendChild(makeChip(dt.name, dt.id, dt.color));
+    });
+    container.appendChild(filterBar);
+
+    const shownTypes = reviewFilter === "all"
+      ? typesWithPoints
+      : typesWithPoints.filter(dt => dt.id === reviewFilter);
+
+    shownTypes.forEach(dt => {
       const section = document.createElement("div");
       section.className = "reviewSection";
 

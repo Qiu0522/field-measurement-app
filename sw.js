@@ -18,7 +18,7 @@
   cached copies are cleared and every device picks up the new version.
 */
 
-const CACHE_VERSION = "field-measurement-v6-8-toolbar-icons-v1";
+const CACHE_VERSION = "field-measurement-v6-9-local-libs";
 const CACHE_NAME = CACHE_VERSION;
 
 // Same-origin app shell, relative to the service worker location.
@@ -30,15 +30,14 @@ const APP_SHELL = [
   "save.js",
   "workspace.js",
   "app.js",
-  "manifest.json"
+  "manifest.json",
+  "lib/pdf.min.js",
+  "lib/pdf.worker.min.js",
+  "lib/html2pdf.bundle.min.js"
 ];
 
-// Cross-origin libraries loaded from cdnjs.
-const CDN_ASSETS = [
-  "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js",
-  "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js",
-  "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"
-];
+// Libraries are now hosted locally in /lib, so there are no cross-origin assets.
+const CDN_ASSETS = [];
 
 self.addEventListener("install", event => {
   event.waitUntil((async () => {

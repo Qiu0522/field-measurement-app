@@ -1401,3 +1401,30 @@ button {
 /* ---------- Backup reminder ---------- */
 .backupStatus { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
 .backupStatus.warn { color: #a3312c; font-weight: 600; }
+
+/* Review sidebar: data-type filter chips */
+.reviewFilterBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 4px 2px 12px;
+  position: sticky;
+  top: 0;
+  background: #fff;
+  z-index: 1;
+}
+.reviewChip {
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #f4f5f7;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.reviewChip.active {
+  color: #fff;
+  background: var(--primary, #276ef1);
+  border-color: var(--primary, #276ef1);
+}
