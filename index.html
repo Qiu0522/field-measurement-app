@@ -80,6 +80,10 @@
       <div class="toolbarRow primaryTools">
         <button id="backHomeBtn" class="toolbarButton" type="button"><svg class="uiIcon" viewBox="0 0 24 24"><path d="M19 12H5m6-6-6 6 6 6"/></svg>Library</button>
         <span id="workspaceProjectName" class="workspaceTitle">Untitled</span>
+        <div class="modeToggle">
+          <button id="measureModeBtn" class="modeBtn active" type="button">Measure</button>
+          <button id="reviewModeBtn" class="modeBtn" type="button">Review</button>
+        </div>
         <span class="toolbarSpacer"></span>
         <div class="zoomControl">
           <button id="zoomOutBtn" class="toolbarButton iconButton" type="button" title="Zoom Out">−</button>
@@ -98,18 +102,18 @@
       </div>
 
       <div class="toolbarRow drawingTools">
-        <label class="compactLabel dataControl">Data Type <select id="dataSelect"></select></label>
-        <button id="addBtn" class="toolbarButton" type="button"><svg class="uiIcon" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Point</button>
-        <button id="lockBtn" class="toolbarButton" type="button"><svg class="uiIcon" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>Lock</button>
-        <button id="orderBtn" class="toolbarButton" type="button"><svg class="uiIcon" viewBox="0 0 24 24"><path d="M8 4v16m-3-3 3 3 3-3M16 20V4m-3 3 3-3 3 3"/></svg>Order</button>
-        <button id="batchAssignBtn" class="toolbarButton" type="button"><svg class="uiIcon" viewBox="0 0 24 24"><rect x="3" y="4" width="7" height="7" rx="1"/><rect x="14" y="4" width="7" height="7" rx="1"/><path d="m5 7 2 2 4-5m5 14h5M3 18h7"/></svg>Batch Side</button>
-        <button id="labelsBtn" class="toolbarButton" type="button"><svg class="uiIcon" viewBox="0 0 24 24"><path d="M4 6h10l6 6-8 8-8-8z"/><circle cx="9" cy="10" r="1"/></svg>Labels</button>
-        <div class="zoomControl labelSizeControl" title="Measurement label size">
+        <label class="compactLabel dataControl measureOnly">Data Type <span id="dataTypeSwatch" class="dataTypeSwatch"></span><select id="dataSelect"></select></label>
+        <button id="addBtn" class="toolbarButton measureOnly" type="button"><svg class="uiIcon" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Point</button>
+        <button id="lockBtn" class="toolbarButton measureOnly" type="button"><svg class="uiIcon" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>Lock</button>
+        <button id="orderBtn" class="toolbarButton reviewOnly" type="button"><svg class="uiIcon" viewBox="0 0 24 24"><path d="M8 4v16m-3-3 3 3 3-3M16 20V4m-3 3 3-3 3 3"/></svg>Auto Sort</button>
+        <button id="batchAssignBtn" class="toolbarButton reviewOnly" type="button"><svg class="uiIcon" viewBox="0 0 24 24"><rect x="3" y="4" width="7" height="7" rx="1"/><rect x="14" y="4" width="7" height="7" rx="1"/><path d="m5 7 2 2 4-5m5 14h5M3 18h7"/></svg>Batch Side</button>
+        <button id="labelsBtn" class="toolbarButton reviewOnly" type="button"><svg class="uiIcon" viewBox="0 0 24 24"><path d="M4 6h10l6 6-8 8-8-8z"/><circle cx="9" cy="10" r="1"/></svg>Labels</button>
+        <div class="zoomControl labelSizeControl reviewOnly" title="Measurement label size">
           <button id="labelSizeDownBtn" class="toolbarButton iconButton" type="button" title="Smaller labels">A−</button>
           <button id="labelSizeDisplay" class="zoomDisplay" type="button" title="Reset label size">30</button>
           <button id="labelSizeUpBtn" class="toolbarButton iconButton" type="button" title="Larger labels">A＋</button>
         </div>
-        <details id="markupMenu" class="markupMenu">
+        <details id="markupMenu" class="markupMenu measureOnly">
           <summary id="markupSummary" class="toolbarButton">✎ Markup ▾</summary>
           <div class="markupMenuPanel">
             <div class="markupToolRow">

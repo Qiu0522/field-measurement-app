@@ -1478,3 +1478,39 @@ button {
 .reviewExcludedRow .reviewVal { text-decoration: line-through; }
 
 .setPositionInfo { margin: 0 0 8px; color: var(--muted); }
+
+/* ---------- Measure / Review mode ---------- */
+.modeToggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 0 10px;
+}
+.modeBtn {
+  padding: 8px 16px;
+  border: none;
+  background: #f1f2f4;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+}
+.modeBtn.active {
+  background: var(--primary, #276ef1);
+  color: #fff;
+}
+
+/* Show only the current mode's tools in the second toolbar row. */
+.drawingTools.mode-measure .reviewOnly { display: none; }
+.drawingTools.mode-review .measureOnly { display: none; }
+
+/* Data type colour swatch in the dropdown label */
+.dataTypeSwatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid rgba(0,0,0,0.25);
+  vertical-align: middle;
+  margin: 0 4px;
+}

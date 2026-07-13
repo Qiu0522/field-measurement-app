@@ -62,6 +62,7 @@ const Workspace = (() => {
   let currentSide = "";
   let setPositionPoint = null;
   let pendingExportTypes = null;
+  let workspaceMode = "measure";
 
   let measurementCallback = null;
   let measurementRawValue = "";
@@ -111,6 +112,10 @@ const Workspace = (() => {
     els.reviewList = document.getElementById("reviewList");
     els.closeReviewBtn = document.getElementById("closeReviewBtn");
     els.orderBtn = document.getElementById("orderBtn");
+    els.measureModeBtn = document.getElementById("measureModeBtn");
+    els.reviewModeBtn = document.getElementById("reviewModeBtn");
+    els.drawingToolsRow = document.querySelector(".drawingTools");
+    els.dataTypeSwatch = document.getElementById("dataTypeSwatch");
     els.batchAssignBtn = document.getElementById("batchAssignBtn");
     els.labelsBtn = document.getElementById("labelsBtn");
     els.exportCsvBtn = document.getElementById("exportCsvBtn");
@@ -294,6 +299,13 @@ const Workspace = (() => {
       els.orderMenu.style.top = (rect.bottom + 4) + "px";
       els.orderMenu.classList.remove("hidden");
     });
+
+    if (els.measureModeBtn) {
+      els.measureModeBtn.addEventListener("click", () => setWorkspaceMode("measure"));
+    }
+    if (els.reviewModeBtn) {
+      els.reviewModeBtn.addEventListener("click", () => setWorkspaceMode("review"));
+    }
     els.batchAssignBtn.addEventListener("click", startBatchAssign);
     els.batchSideButtons.forEach(button => {
       button.addEventListener("click", () => applyBatchSide(button.dataset.batchSide));
@@ -652,6 +664,7 @@ const Workspace = (() => {
     setCurrentSide("");
     reviewFilter = "all";
     updateNoSideBanner();
+    setWorkspaceMode("measure");
 
     removeAllTextNoteElements();
     selectedNoteId = null;
@@ -755,13 +768,10 @@ const Workspace = (() => {
       const pointCount =
         points.filter(point => point.dataId === dataType.id).length;
 
-      const statusMark = pointCount
-        ? (dataType.ordered ? "✓ " : "○ ")
-        : "";
-
       const option = document.createElement("option");
       option.value = dataType.id;
-      option.textContent = statusMark + dataType.name;
+      option.textContent = (pointCount ? "● " : "○ ") + dataType.name;
+      option.style.color = dataType.color || "#111";
       els.dataSelect.appendChild(option);
     });
 
@@ -775,10 +785,19 @@ const Workspace = (() => {
     } else if (dataTypes.length) {
       els.dataSelect.value = dataTypes[0].id;
     }
+
+    updateDataTypeSwatch();
+  }
+
+  function updateDataTypeSwatch() {
+    if (!els.dataTypeSwatch) return;
+    const dataType = getDataType(els.dataSelect.value);
+    els.dataTypeSwatch.style.background = dataType ? (dataType.color || "#111") : "transparent";
   }
 
   function handleDataSelectChange() {
     if (els.dataSelect.value !== "__add_data_type__") {
+      updateDataTypeSwatch();
       scheduleAutoSave();
       return;
     }
@@ -1885,6 +1904,35 @@ const Workspace = (() => {
   }
 
   /* ---------- Current side (chosen on the keypad, inherited by new points) ---------- */
+
+  /* ---------- Measure / Review mode ---------- */
+
+  function setWorkspaceMode(mode) {
+    workspaceMode = mode === "review" ? "review" : "measure";
+
+    if (els.drawingToolsRow) {
+      els.drawingToolsRow.classList.toggle("mode-review", workspaceMode === "review");
+      els.drawingToolsRow.classList.toggle("mode-measure", workspaceMode === "measure");
+    }
+    if (els.measureModeBtn) {
+      els.measureModeBtn.classList.toggle("active", workspaceMode === "measure");
+    }
+    if (els.reviewModeBtn) {
+      els.reviewModeBtn.classList.toggle("active", workspaceMode === "review");
+    }
+
+    if (workspaceMode === "review") {
+      // Review locks input: no new points, no active markup tool.
+      pointMode = "lock";
+      commentTool = "none";
+      if (els.markupMenu) els.markupMenu.open = false;
+      setStatus("Review mode: refine order, labels and sides. Point input is locked.");
+    } else {
+      setStatus("Measure mode: place points and mark up the drawing.");
+    }
+
+    updateToolButtons();
+  }
 
   function setCurrentSide(side) {
     currentSide = side || "";
