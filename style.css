@@ -1584,3 +1584,14 @@ button {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* Multi-page PDF navigation */
+#pageBtn { white-space: nowrap; }
+#pageDisplay { font-weight: 700; margin-left: 4px; }
+.pageCard { width: min(460px, calc(100vw - 32px)); max-height: min(720px, calc(100vh - 48px)); }
+.pageList { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 8px; max-height: 54vh; overflow: auto; padding: 4px; }
+.pageJumpButton { min-height: 48px; border: 1px solid #d8dee7; border-radius: 10px; background: #fff; font-weight: 700; cursor: pointer; }
+.pageJumpButton.active { background: #1f6feb; color: #fff; border-color: #1f6feb; }
+.pageJumpButton.hasData::after { content: " •"; }
+.mutedText { color: #667085; margin-top: -4px; }

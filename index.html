@@ -91,6 +91,7 @@
           <button id="zoomInBtn" class="toolbarButton iconButton" type="button" title="Zoom In">＋</button>
         </div>
         <button id="fitBtn" class="toolbarButton" type="button"><svg class="uiIcon" viewBox="0 0 24 24"><path d="M8 3H3v5m13-5h5v5M8 21H3v-5m13 5h5v-5"/></svg>Fit</button>
+        <button id="pageBtn" class="toolbarButton" type="button" title="Jump to PDF page">Page <span id="pageDisplay">1/1</span></button>
         <button id="reviewBtn" class="toolbarButton" type="button"><svg class="uiIcon" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></svg>Review</button>
         <button id="undoBtn" class="toolbarButton iconButton" type="button" title="Undo"><svg class="uiIcon" viewBox="0 0 24 24"><path d="M9 7 4 12l5 5M5 12h8a6 6 0 0 1 6 6"/></svg></button>
         <button id="redoBtn" class="toolbarButton iconButton" type="button" title="Redo"><svg class="uiIcon" viewBox="0 0 24 24"><path d="m15 7 5 5-5 5m4-5h-8a6 6 0 0 0-6 6"/></svg></button>
@@ -223,6 +224,18 @@
     <button id="pointDeleteAction" class="dangerText" type="button">Delete</button>
   </div>
 
+
+  <div id="pageModal" class="modalBackdrop hidden">
+    <div class="modalCard pageCard">
+      <h2>Pages</h2>
+      <p id="pageModalSummary" class="mutedText"></p>
+      <div id="pageList" class="pageList"></div>
+      <div class="modalActions">
+        <button id="closePageModalBtn" type="button">Close</button>
+      </div>
+    </div>
+  </div>
+
   <div id="autoSortModal" class="modalBackdrop hidden">
     <div class="modalCard autoSortCard">
       <h2>Auto Sort</h2>
@@ -235,6 +248,7 @@
       <label>
         Side
         <select id="autoSortSide">
+          <option value="__all__">All Sides</option>
           <option value="N">North</option>
           <option value="E">East</option>
           <option value="S">South</option>

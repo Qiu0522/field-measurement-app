@@ -73,6 +73,12 @@ const Workspace = (() => {
   let lastAutoSortSide = "N";
   let lastAutoSortDirection = "clockwise";
 
+  let pdfDocument = null;
+  let currentPdfPage = 1;
+  let totalPdfPages = 1;
+  let pageStates = {};
+  let switchingPage = false;
+
   let undoStack = [];
   let redoStack = [];
 
@@ -109,6 +115,12 @@ const Workspace = (() => {
     els.labelSizeUpBtn = document.getElementById("labelSizeUpBtn");
     els.labelSizeDisplay = document.getElementById("labelSizeDisplay");
     els.fitBtn = document.getElementById("fitBtn");
+    els.pageBtn = document.getElementById("pageBtn");
+    els.pageDisplay = document.getElementById("pageDisplay");
+    els.pageModal = document.getElementById("pageModal");
+    els.pageModalSummary = document.getElementById("pageModalSummary");
+    els.pageList = document.getElementById("pageList");
+    els.closePageModalBtn = document.getElementById("closePageModalBtn");
 
     els.reviewBtn = document.getElementById("reviewBtn");
     els.reviewSidebar = document.getElementById("reviewSidebar");
@@ -382,6 +394,9 @@ const Workspace = (() => {
 
     els.zoomDisplay.addEventListener("click", () => resetZoom());
     els.fitBtn.addEventListener("click", fitDrawing);
+    els.pageBtn.addEventListener("click", openPageModal);
+    els.closePageModalBtn.addEventListener("click", closePageModal);
+    els.pageModal.addEventListener("click", event => { if (event.target === els.pageModal) closePageModal(); });
 
     if (els.reviewBtn) els.reviewBtn.addEventListener("click", toggleReviewSidebar);
     if (els.closeReviewBtn) els.closeReviewBtn.addEventListener("click", () => {
@@ -610,9 +625,19 @@ const Workspace = (() => {
 
     const state = project.state || {};
 
-    points = clone(state.points || []);
-    dataTypes = clone(state.dataTypes || DEFAULT_DATA_TYPES);
-    textNotes = clone(state.textNotes || []);
+    pageStates = clone(state.pageStates || {});
+    currentPdfPage = Math.max(1, Number(state.currentPdfPage || 1));
+    if (!Object.keys(pageStates).length) {
+      pageStates[1] = {
+        points: clone(state.points || []), dataTypes: clone(state.dataTypes || DEFAULT_DATA_TYPES),
+        textNotes: clone(state.textNotes || []), commentImageData: state.commentImageData || "",
+        selectedDataId: state.selectedDataId || null, scrollLeft: state.scrollLeft || 0, scrollTop: state.scrollTop || 0
+      };
+    }
+    const initialPageState = pageStates[currentPdfPage] || pageStates[1] || {};
+    points = clone(initialPageState.points || []);
+    dataTypes = clone(initialPageState.dataTypes || DEFAULT_DATA_TYPES);
+    textNotes = clone(initialPageState.textNotes || []);
 
     dataTypes.forEach(dataType => {
       if (typeof dataType.ordered !== "boolean") dataType.ordered = false;
@@ -628,7 +653,7 @@ const Workspace = (() => {
     zoomLevel = Number(state.zoomLevel || 1);
     labelFontSize = Number(state.labelFontSize || 30);
 
-    commentImageData = state.commentImageData || "";
+    commentImageData = initialPageState.commentImageData || "";
     undoStack = [];
     redoStack = [];
     updateUndoRedoButtons();
@@ -641,12 +666,13 @@ const Workspace = (() => {
     removeAllPointElements();
 
     if (project.kind === "pdf") {
-      await renderStoredPdf(project.pdfData);
+      await renderStoredPdf(project.pdfData, currentPdfPage);
     } else {
       createBlankDrawing(
         project.blankWidth || 2400,
         project.blankHeight || 1600
       );
+      updatePageDisplay();
     }
 
     points.forEach(createPointElement);
@@ -672,8 +698,8 @@ const Workspace = (() => {
     applyLabelFontSize();
 
     requestAnimationFrame(() => {
-      els.drawingWrapper.scrollLeft = state.scrollLeft || 0;
-      els.drawingWrapper.scrollTop = state.scrollTop || 0;
+      els.drawingWrapper.scrollLeft = initialPageState.scrollLeft || 0;
+      els.drawingWrapper.scrollTop = initialPageState.scrollTop || 0;
     });
 
     setPointMode(pointMode);
@@ -690,6 +716,8 @@ const Workspace = (() => {
     }
 
     project = null;
+    pdfDocument = null;
+    currentPdfPage = 1; totalPdfPages = 1; pageStates = {};
     points = [];
     dataTypes = clone(DEFAULT_DATA_TYPES);
     removeAllPointElements();
@@ -705,37 +733,88 @@ const Workspace = (() => {
     SaveController.markSaved();
   }
 
-  async function renderStoredPdf(pdfData) {
-    if (!pdfData) {
-      throw new Error("This project has no stored PDF.");
+  async function renderStoredPdf(pdfData, pageNumber = 1) {
+    if (!pdfData) throw new Error("This project has no stored PDF.");
+    if (!pdfDocument) {
+      pdfDocument = await pdfjsLib.getDocument(new Uint8Array(pdfData)).promise;
+      totalPdfPages = pdfDocument.numPages || 1;
     }
-
-    const typedArray = new Uint8Array(pdfData);
-    const pdf = await pdfjsLib.getDocument(typedArray).promise;
-    const page = await pdf.getPage(1);
-
+    currentPdfPage = Math.min(Math.max(1, Number(pageNumber) || 1), totalPdfPages);
+    const page = await pdfDocument.getPage(currentPdfPage);
     const viewport = page.getViewport({ scale: 5 });
     const context = els.pdfCanvas.getContext("2d");
-
     els.pdfCanvas.width = Math.round(viewport.width);
     els.pdfCanvas.height = Math.round(viewport.height);
-
     els.drawingArea.style.width = els.pdfCanvas.width + "px";
     els.drawingArea.style.height = els.pdfCanvas.height + "px";
-
     els.drawingImage.classList.add("hidden");
     els.pdfCanvas.classList.remove("hidden");
-
-    await page.render({
-      canvasContext: context,
-      viewport
-    }).promise;
-
-    setupCommentCanvas(
-      els.pdfCanvas.width,
-      els.pdfCanvas.height
-    );
+    await page.render({ canvasContext: context, viewport }).promise;
+    setupCommentCanvas(els.pdfCanvas.width, els.pdfCanvas.height);
+    updatePageDisplay();
   }
+
+  function captureCurrentPageState() {
+    if (!project || project.kind !== "pdf") return;
+    pageStates[currentPdfPage] = {
+      points: clone(points), dataTypes: clone(dataTypes), textNotes: clone(textNotes),
+      commentImageData, selectedDataId: els.dataSelect ? els.dataSelect.value : null,
+      scrollLeft: els.drawingWrapper.scrollLeft, scrollTop: els.drawingWrapper.scrollTop
+    };
+  }
+
+  function emptyPageState() {
+    return { points: [], dataTypes: clone(DEFAULT_DATA_TYPES), textNotes: [], commentImageData: "",
+      selectedDataId: DEFAULT_DATA_TYPES[0].id, scrollLeft: 0, scrollTop: 0 };
+  }
+
+  async function goToPdfPage(pageNumber) {
+    if (!project || project.kind !== "pdf" || switchingPage) return;
+    const target = Math.min(Math.max(1, Number(pageNumber) || 1), totalPdfPages);
+    if (target === currentPdfPage) { closePageModal(); return; }
+    switchingPage = true;
+    try {
+      captureCurrentPageState();
+      removeAllPointElements(); removeAllTextNoteElements();
+      els.commentCanvas.getContext("2d").clearRect(0, 0, els.commentCanvas.width, els.commentCanvas.height);
+      currentPdfPage = target;
+      const state = pageStates[target] || emptyPageState();
+      points = clone(state.points || []); dataTypes = clone(state.dataTypes || DEFAULT_DATA_TYPES);
+      textNotes = clone(state.textNotes || []); commentImageData = state.commentImageData || "";
+      dataTypes.forEach(dt => { if (!Array.isArray(dt.lockedSides)) dt.lockedSides = []; });
+      await renderStoredPdf(project.pdfData, target);
+      renderDataSelect(state.selectedDataId);
+      points.forEach(createPointElement); textNotes.forEach(createTextNoteElement);
+      if (commentImageData) await restoreCommentImage(commentImageData);
+      applyZoom(); applyLabelFontSize();
+      els.drawingWrapper.scrollLeft = state.scrollLeft || 0; els.drawingWrapper.scrollTop = state.scrollTop || 0;
+      undoStack = []; redoStack = []; updateUndoRedoButtons(); updateNoSideBanner();
+      closePageModal(); scheduleAutoSave(); setStatus(`Page ${currentPdfPage} of ${totalPdfPages}.`);
+    } finally { switchingPage = false; }
+  }
+
+  function updatePageDisplay() {
+    if (!els.pageBtn) return;
+    const isPdf = !!(project && project.kind === "pdf");
+    els.pageBtn.classList.toggle("hidden", !isPdf);
+    if (els.pageDisplay) els.pageDisplay.textContent = `${currentPdfPage}/${totalPdfPages}`;
+  }
+
+  function openPageModal() {
+    if (!project || project.kind !== "pdf") return;
+    captureCurrentPageState();
+    els.pageModalSummary.textContent = `${totalPdfPages} pages · click a page to jump`;
+    els.pageList.innerHTML = "";
+    for (let n = 1; n <= totalPdfPages; n += 1) {
+      const b = document.createElement("button"); b.type = "button"; b.className = "pageJumpButton";
+      if (n === currentPdfPage) b.classList.add("active");
+      const ps = pageStates[n];
+      if (ps && ((ps.points && ps.points.length) || ps.commentImageData || (ps.textNotes && ps.textNotes.length))) b.classList.add("hasData");
+      b.textContent = `Page ${n}`; b.addEventListener("click", () => goToPdfPage(n)); els.pageList.appendChild(b);
+    }
+    els.pageModal.classList.remove("hidden");
+  }
+  function closePageModal() { if (els.pageModal) els.pageModal.classList.add("hidden"); }
 
   function createBlankDrawing(width, height) {
     els.drawingImage.classList.add("hidden");
@@ -1795,6 +1874,10 @@ const Workspace = (() => {
 
     const selectedDataId = lastAutoSortDataId || currentDataId() || (dataTypes[0] && dataTypes[0].id);
     els.autoSortDataType.innerHTML = "";
+    const allTypesOption = document.createElement("option");
+    allTypesOption.value = "__all__";
+    allTypesOption.textContent = "All Data Types";
+    els.autoSortDataType.appendChild(allTypesOption);
 
     dataTypes.forEach(dataType => {
       const option = document.createElement("option");
@@ -1803,12 +1886,12 @@ const Workspace = (() => {
       els.autoSortDataType.appendChild(option);
     });
 
-    if (selectedDataId && getDataType(selectedDataId)) {
+    if (selectedDataId === "__all__" || (selectedDataId && getDataType(selectedDataId))) {
       els.autoSortDataType.value = selectedDataId;
     }
-    els.autoSortSide.value = ["N", "E", "S", "W"].includes(lastAutoSortSide)
+    els.autoSortSide.value = ["__all__", "N", "E", "S", "W"].includes(lastAutoSortSide)
       ? lastAutoSortSide
-      : "N";
+      : "__all__";
 
     els.autoSortDirectionChoices.forEach(choice => {
       choice.checked = choice.value === lastAutoSortDirection;
@@ -1822,39 +1905,26 @@ const Workspace = (() => {
   }
 
   function confirmAutoSort() {
-    const dataId = els.autoSortDataType.value;
-    const side = els.autoSortSide.value;
+    const dataSelection = els.autoSortDataType.value;
+    const sideSelection = els.autoSortSide.value;
     const selectedDirection = els.autoSortDirectionChoices.find(choice => choice.checked);
     const direction = selectedDirection ? selectedDirection.value : "clockwise";
-    const dataType = getDataType(dataId);
-
-    if (!dataType) {
-      setStatus("Choose a valid data type.");
-      return;
-    }
-
-    if (!pointsInSide(dataId, side).length) {
-      setStatus(`No ${dataType.name} points on side ${side}.`);
-      return;
-    }
-
-    lastAutoSortDataId = dataId;
-    lastAutoSortSide = side;
-    lastAutoSortDirection = direction;
-
-    const before = snapshotOrder(dataId);
-    autoSortSide(dataId, side, direction);
-    const after = snapshotOrder(dataId);
-    pushUndo({ type: "reorder", dataId, before, after });
-
-    dataType.direction = direction;
-    recalculateDataTypeOrder(dataId);
-    refreshAllPoints();
-    renderDataSelect(dataId);
-    closeAutoSortModal();
-
-    const directionLabel = direction === "clockwise" ? "clockwise" : "counterclockwise";
-    setStatus(`Auto-sorted ${dataType.name} · ${side} · ${directionLabel}.`);
+    const targetDataTypes = dataSelection === "__all__" ? dataTypes.slice() : [getDataType(dataSelection)].filter(Boolean);
+    const targetSides = sideSelection === "__all__" ? ["N", "E", "S", "W"] : [sideSelection];
+    if (!targetDataTypes.length) { setStatus("Choose a valid data type."); return; }
+    const targets = [];
+    targetDataTypes.forEach(dt => targetSides.forEach(side => { if (pointsInSide(dt.id, side).length) targets.push({dt, side}); }));
+    if (!targets.length) { setStatus("No matching assigned points to sort."); return; }
+    lastAutoSortDataId = dataSelection; lastAutoSortSide = sideSelection; lastAutoSortDirection = direction;
+    const before = {}; targetDataTypes.forEach(dt => { before[dt.id] = snapshotOrder(dt.id); });
+    targets.forEach(({dt, side}) => autoSortSide(dt.id, side, direction));
+    targetDataTypes.forEach(dt => { dt.direction = direction; recalculateDataTypeOrder(dt.id); });
+    const after = {}; targetDataTypes.forEach(dt => { after[dt.id] = snapshotOrder(dt.id); });
+    pushUndo({ type: "reorderBatch", before, after });
+    refreshAllPoints(); renderDataSelect(currentDataId()); closeAutoSortModal();
+    const typeLabel = dataSelection === "__all__" ? "all data types" : targetDataTypes[0].name;
+    const sideLabel = sideSelection === "__all__" ? "all sides" : sideSelection;
+    setStatus(`Auto-sorted ${typeLabel} · ${sideLabel} · ${direction === "clockwise" ? "clockwise" : "counterclockwise"}.`);
     scheduleAutoSave();
   }
 
@@ -2813,6 +2883,10 @@ const Workspace = (() => {
       restoreOrder(action.dataId, action.before);
     }
 
+    if (action.type === "reorderBatch") {
+      Object.entries(action.before || {}).forEach(([dataId, snap]) => restoreOrder(dataId, snap));
+    }
+
     if (action.type === "comment") {
       restoreCommentImage(action.before);
     }
@@ -2883,6 +2957,10 @@ const Workspace = (() => {
 
     if (action.type === "reorder") {
       restoreOrder(action.dataId, action.after);
+    }
+
+    if (action.type === "reorderBatch") {
+      Object.entries(action.after || {}).forEach(([dataId, snap]) => restoreOrder(dataId, snap));
     }
 
     if (action.type === "comment") {
@@ -3195,9 +3273,12 @@ const Workspace = (() => {
 
   async function persistProjectState() {
     if (!project) return;
+    if (project.kind === "pdf") captureCurrentPageState();
 
     project.state = {
       points,
+      pageStates,
+      currentPdfPage,
       dataTypes,
       textNotes,
       pointMode,
