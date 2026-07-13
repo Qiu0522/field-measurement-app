@@ -1589,13 +1589,103 @@ button {
 /* Multi-page PDF navigation */
 #pageBtn { white-space: nowrap; }
 #pageDisplay { font-weight: 700; margin-left: 4px; }
-.pageCard { width: min(460px, calc(100vw - 32px)); max-height: min(720px, calc(100vh - 48px)); }
-.pageList { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 8px; max-height: 54vh; overflow: auto; padding: 4px; }
-.pageJumpButton { min-height: 48px; border: 1px solid #d8dee7; border-radius: 10px; background: #fff; font-weight: 700; cursor: pointer; }
-.pageJumpButton.active { background: #1f6feb; color: #fff; border-color: #1f6feb; }
-.pageJumpButton.hasData::after { content: " •"; }
-.mutedText { color: #667085; margin-top: -4px; }
-
+.pageSidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 1300;
+  width: min(292px, 86vw);
+  display: flex;
+  flex-direction: column;
+  background: #f7f8fa;
+  border-right: 1px solid #cfd6e1;
+  box-shadow: 10px 0 28px rgba(15, 23, 42, 0.22);
+  padding: max(14px, env(safe-area-inset-top)) 12px max(14px, env(safe-area-inset-bottom));
+}
+.pageSidebarHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 4px 12px;
+  border-bottom: 1px solid #d8dee7;
+}
+.pageSidebarHeader h2 { margin: 0 0 5px; font-size: 20px; }
+.pageSidebarHeader .mutedText { margin: 0; }
+.pageSidebarClose {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  border: 1px solid #cfd6e1;
+  border-radius: 10px;
+  background: #fff;
+  font-size: 25px;
+  line-height: 1;
+  cursor: pointer;
+}
+.pageList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 12px 5px 20px 3px;
+  -webkit-overflow-scrolling: touch;
+}
+.pageJumpButton {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  width: 100%;
+  padding: 9px;
+  border: 2px solid transparent;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.12);
+  cursor: pointer;
+  text-align: left;
+}
+.pageJumpButton:hover { border-color: #9ab9ef; }
+.pageJumpButton.active {
+  border-color: #1f6feb;
+  background: #eef5ff;
+  box-shadow: 0 0 0 2px rgba(31, 111, 235, 0.12);
+}
+.pageThumbnailFrame {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-height: 112px;
+  overflow: hidden;
+  border: 1px solid #d8dee7;
+  border-radius: 7px;
+  background: #e9edf3;
+}
+.pageThumbnail {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  background: #fff;
+}
+.pageThumbnail.thumbnailError { min-height: 112px; background: #f5f5f5; }
+.pageJumpLabel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  color: #172033;
+  font-weight: 750;
+}
+.pageDataBadge {
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #e6f4ea;
+  color: #16723b;
+  font-size: 11px;
+  font-weight: 800;
+}
+.mutedText { color: #667085; }
 
 /* ---------- V7 prominent current-side selector ---------- */
 .currentSidePanel {

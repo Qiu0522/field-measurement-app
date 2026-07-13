@@ -77,6 +77,8 @@ const Workspace = (() => {
   let currentPdfPage = 1;
   let totalPdfPages = 1;
   let pageStates = {};
+  let pageThumbnailObserver = null;
+  let pageThumbnailRenderToken = 0;
   let switchingPage = false;
 
   let undoStack = [];
@@ -396,7 +398,6 @@ const Workspace = (() => {
     els.fitBtn.addEventListener("click", fitDrawing);
     els.pageBtn.addEventListener("click", openPageModal);
     els.closePageModalBtn.addEventListener("click", closePageModal);
-    els.pageModal.addEventListener("click", event => { if (event.target === els.pageModal) closePageModal(); });
 
     if (els.reviewBtn) els.reviewBtn.addEventListener("click", toggleReviewSidebar);
     if (els.closeReviewBtn) els.closeReviewBtn.addEventListener("click", () => {
@@ -800,21 +801,96 @@ const Workspace = (() => {
     if (els.pageDisplay) els.pageDisplay.textContent = `${currentPdfPage}/${totalPdfPages}`;
   }
 
+  async function renderPageThumbnail(canvas, pageNumber, token) {
+    if (!pdfDocument || token !== pageThumbnailRenderToken || canvas.dataset.rendered === "true") return;
+    try {
+      const page = await pdfDocument.getPage(pageNumber);
+      if (token !== pageThumbnailRenderToken) return;
+      const baseViewport = page.getViewport({ scale: 1 });
+      const targetWidth = 176;
+      const scale = targetWidth / baseViewport.width;
+      const viewport = page.getViewport({ scale });
+      canvas.width = Math.max(1, Math.round(viewport.width));
+      canvas.height = Math.max(1, Math.round(viewport.height));
+      const context = canvas.getContext("2d", { alpha: false });
+      await page.render({ canvasContext: context, viewport }).promise;
+      if (token === pageThumbnailRenderToken) canvas.dataset.rendered = "true";
+    } catch (error) {
+      console.warn(`Could not render thumbnail for page ${pageNumber}:`, error);
+      canvas.classList.add("thumbnailError");
+    }
+  }
+
   function openPageModal() {
     if (!project || project.kind !== "pdf") return;
     captureCurrentPageState();
-    els.pageModalSummary.textContent = `${totalPdfPages} pages · click a page to jump`;
+    els.pageModalSummary.textContent = `${totalPdfPages} pages · scroll and tap to jump`;
     els.pageList.innerHTML = "";
+    pageThumbnailRenderToken += 1;
+    const token = pageThumbnailRenderToken;
+
+    if (pageThumbnailObserver) pageThumbnailObserver.disconnect();
+    pageThumbnailObserver = "IntersectionObserver" in window
+      ? new IntersectionObserver(entries => {
+          entries.forEach(entry => {
+            if (!entry.isIntersecting) return;
+            const canvas = entry.target.querySelector("canvas");
+            const pageNumber = Number(entry.target.dataset.pageNumber);
+            renderPageThumbnail(canvas, pageNumber, token);
+            pageThumbnailObserver.unobserve(entry.target);
+          });
+        }, { root: els.pageList, rootMargin: "240px 0px" })
+      : null;
+
     for (let n = 1; n <= totalPdfPages; n += 1) {
-      const b = document.createElement("button"); b.type = "button"; b.className = "pageJumpButton";
-      if (n === currentPdfPage) b.classList.add("active");
-      const ps = pageStates[n];
-      if (ps && ((ps.points && ps.points.length) || ps.commentImageData || (ps.textNotes && ps.textNotes.length))) b.classList.add("hasData");
-      b.textContent = `Page ${n}`; b.addEventListener("click", () => goToPdfPage(n)); els.pageList.appendChild(b);
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "pageJumpButton";
+      button.dataset.pageNumber = String(n);
+      if (n === currentPdfPage) button.classList.add("active");
+      const pageState = pageStates[n];
+      const hasData = pageState && ((pageState.points && pageState.points.length) || pageState.commentImageData || (pageState.textNotes && pageState.textNotes.length));
+      if (hasData) button.classList.add("hasData");
+
+      const preview = document.createElement("div");
+      preview.className = "pageThumbnailFrame";
+      const canvas = document.createElement("canvas");
+      canvas.className = "pageThumbnail";
+      canvas.setAttribute("aria-hidden", "true");
+      preview.appendChild(canvas);
+
+      const label = document.createElement("span");
+      label.className = "pageJumpLabel";
+      label.textContent = `Page ${n}`;
+      if (hasData) {
+        const badge = document.createElement("span");
+        badge.className = "pageDataBadge";
+        badge.textContent = "Data";
+        label.appendChild(badge);
+      }
+
+      button.append(preview, label);
+      button.addEventListener("click", () => goToPdfPage(n));
+      els.pageList.appendChild(button);
+      if (pageThumbnailObserver) pageThumbnailObserver.observe(button);
+      else renderPageThumbnail(canvas, n, token);
     }
+
     els.pageModal.classList.remove("hidden");
+    requestAnimationFrame(() => {
+      const active = els.pageList.querySelector(".pageJumpButton.active");
+      if (active) active.scrollIntoView({ block: "center" });
+    });
   }
-  function closePageModal() { if (els.pageModal) els.pageModal.classList.add("hidden"); }
+
+  function closePageModal() {
+    if (pageThumbnailObserver) {
+      pageThumbnailObserver.disconnect();
+      pageThumbnailObserver = null;
+    }
+    pageThumbnailRenderToken += 1;
+    if (els.pageModal) els.pageModal.classList.add("hidden");
+  }
 
   function createBlankDrawing(width, height) {
     els.drawingImage.classList.add("hidden");
@@ -1929,13 +2005,15 @@ const Workspace = (() => {
     const targets = [];
     targetDataTypes.forEach(dt => targetSides.forEach(side => { if (pointsInSide(dt.id, side).length) targets.push({dt, side}); }));
     if (!targets.length) { setStatus("No matching assigned points to sort."); return; }
+    closeAutoSortModal();
+    setStatus("Sorting…");
     lastAutoSortDataId = dataSelection; lastAutoSortSide = sideSelection; lastAutoSortDirection = direction;
     const before = {}; targetDataTypes.forEach(dt => { before[dt.id] = snapshotOrder(dt.id); });
     targets.forEach(({dt, side}) => autoSortSide(dt.id, side, direction));
     targetDataTypes.forEach(dt => { dt.direction = direction; recalculateDataTypeOrder(dt.id); });
     const after = {}; targetDataTypes.forEach(dt => { after[dt.id] = snapshotOrder(dt.id); });
     pushUndo({ type: "reorderBatch", before, after });
-    refreshAllPoints(); renderDataSelect(currentDataId()); closeAutoSortModal();
+    refreshAllPoints(); renderDataSelect(currentDataId());
     const typeLabel = dataSelection === "__all__" ? "all data types" : targetDataTypes[0].name;
     const sideLabel = sideSelection === "__all__" ? "all sides" : sideSelection;
     setStatus(`Auto-sorted ${typeLabel} · ${sideLabel} · ${direction === "clockwise" ? "clockwise" : "counterclockwise"}.`);
