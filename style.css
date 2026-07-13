@@ -1597,23 +1597,50 @@ button {
 .mutedText { color: #667085; margin-top: -4px; }
 
 
-/* ---------------- Batch project transfer ---------------- */
-.libraryCard.selectionMode { cursor: pointer; }
-.libraryCard.selectedForTransfer {
-  border: 3px solid var(--primary);
-  box-shadow: 0 0 0 3px rgba(36, 99, 235, 0.15);
+/* ---------- V7 prominent current-side selector ---------- */
+.currentSidePanel {
+  padding: 10px 12px 12px;
+  margin-bottom: 10px;
+  border: 2px solid #276ef1;
+  border-radius: 12px;
+  background: #eef4ff;
 }
-.transferCheck {
-  position: absolute; top: 10px; left: 10px; z-index: 3;
-  width: 28px; height: 28px; border-radius: 50%;
-  display: grid; place-items: center;
-  border: 2px solid #77808c; background: white; font-weight: 800;
+.currentSideLabel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  color: #173b78;
+  font-size: 16px;
+  font-weight: 800;
 }
-.selectedForTransfer .transferCheck { background: var(--primary); color: white; border-color: var(--primary); }
-.checkChoice { display: flex !important; align-items: center; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 9px; }
-.checkChoice input { width: 22px !important; min-height: 22px !important; margin: 0 !important; }
-.conflictTimes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 14px 0; }
-.conflictTimes div { padding: 10px; border: 1px solid var(--border); border-radius: 8px; }
-.conflictTimes span { display: block; margin-top: 6px; font-size: 13px; color: var(--muted); }
-.stackedActions { flex-wrap: wrap; }
-.stackedActions button { min-width: 120px; }
+.currentSideReminder {
+  color: #6a7890;
+  font-size: 12px;
+  font-weight: 600;
+}
+.currentSidePanel .sideRow { margin-top: 0; }
+.currentSidePanel .sideBtn {
+  min-height: 54px;
+  background: #fff;
+  border-width: 2px;
+  font-size: 20px;
+}
+.currentSidePanel .pendingSideBtn {
+  color: #7a5a00;
+  background: #fff7d6;
+  border-color: #d9bd54;
+}
+.currentSidePanel .pendingSideBtn.activeSide {
+  color: #5f4400;
+  background: #ffd95a;
+  border-color: #c59d00;
+}
+@media (min-width: 760px) {
+  .measurementCard { width: min(900px, calc(100vw - 32px)); }
+  .measurementKeypad.v6Keypad { display: grid; grid-template-columns: minmax(0, 1fr) 190px; gap: 12px; }
+  .currentSidePanel { grid-column: 1 / -1; }
+  .v6MainGrid { grid-column: 1; }
+  .spaceButton, .measurementActions { grid-column: 2; }
+  .spaceButton { align-self: stretch; }
+}

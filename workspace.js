@@ -1226,24 +1226,38 @@ const Workspace = (() => {
 
   function editPoint(point) {
     const oldValue = point.measurement;
+    const oldSide = point.assignedSide || "";
+
+    // Editing a point starts from that point's own side. The operator can
+    // change it on the keypad and the new side is saved together with value.
+    setCurrentSide(oldSide);
 
     openMeasurementModal(
       oldValue,
       "Edit Measurement",
       value => {
         const newValue = value.trim();
-        if (!newValue || newValue === oldValue) return;
+        const newSide = currentSide || "";
+        if (!newValue) return;
+        if (newValue === oldValue && newSide === oldSide) return;
 
         point.measurement = newValue;
+        point.assignedSide = newSide;
+        point.sideLocked = true;
 
         pushUndo({
           type: "edit",
           point,
           oldValue,
-          newValue
+          newValue,
+          oldSide,
+          newSide
         });
 
+        recalculateDataTypeOrder(point.dataId);
         updatePointElement(point);
+        updateNoSideBanner();
+        renderDataSelect(point.dataId);
         scheduleAutoSave();
       }
     );
@@ -2839,7 +2853,12 @@ const Workspace = (() => {
 
     if (action.type === "edit") {
       action.point.measurement = action.oldValue;
+      if (Object.prototype.hasOwnProperty.call(action, "oldSide")) {
+        action.point.assignedSide = action.oldSide || "";
+      }
+      recalculateDataTypeOrder(action.point.dataId);
       updatePointElement(action.point);
+      updateNoSideBanner();
     }
 
     if (action.type === "move") {
@@ -2922,7 +2941,12 @@ const Workspace = (() => {
 
     if (action.type === "edit") {
       action.point.measurement = action.newValue;
+      if (Object.prototype.hasOwnProperty.call(action, "newSide")) {
+        action.point.assignedSide = action.newSide || "";
+      }
+      recalculateDataTypeOrder(action.point.dataId);
       updatePointElement(action.point);
+      updateNoSideBanner();
     }
 
     if (action.type === "move") {
@@ -3286,6 +3310,7 @@ const Workspace = (() => {
       zoomLevel,
       labelFontSize,
       selectedDataId: els.dataSelect.value,
+      currentSide,
       commentImageData,
       brushColor,
       brushWidth,

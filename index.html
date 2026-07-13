@@ -218,7 +218,6 @@
     <button id="deleteLibraryAction" class="dangerText" type="button">Delete</button>
   </div>
 
-
   <div id="transferExportModal" class="modalBackdrop hidden">
     <div class="modalCard">
       <h2>Export Projects</h2>
@@ -435,6 +434,17 @@
       <p id="measurementError" class="measurementError hidden"></p>
 
       <div class="measurementKeypad v6Keypad">
+        <div class="currentSidePanel">
+          <div class="currentSideLabel">Current Side <span class="currentSideReminder">Check before entering</span></div>
+          <div class="sideRow">
+            <button class="sideBtn" data-side="N" type="button">N</button>
+            <button class="sideBtn" data-side="E" type="button">E</button>
+            <button class="sideBtn" data-side="S" type="button">S</button>
+            <button class="sideBtn" data-side="W" type="button">W</button>
+            <button class="sideBtn pendingSideBtn activeSide" data-side="" type="button" title="Pending side">?</button>
+          </div>
+        </div>
+
         <div class="v6MainGrid">
           <button data-key="7">7</button>
           <button data-key="8">8</button>
@@ -461,13 +471,6 @@
           <button data-denominator="16" class="fractionButton">/16</button>
         </div>
 
-        <div class="sideRow">
-          <button class="sideBtn activeSide" data-side="" type="button">None</button>
-          <button class="sideBtn" data-side="N" type="button">N</button>
-          <button class="sideBtn" data-side="E" type="button">E</button>
-          <button class="sideBtn" data-side="S" type="button">S</button>
-          <button class="sideBtn" data-side="W" type="button">W</button>
-        </div>
 
         <button data-key=" " class="spaceButton">SPACE</button>
 
