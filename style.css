@@ -1514,3 +1514,28 @@ button {
   vertical-align: middle;
   margin: 0 4px;
 }
+
+
+/* ===== V7 usability refinements ===== */
+.measurementCard { width:min(860px,98vw); max-height:96vh; overflow:auto; }
+.measurementKeypad.v6Keypad { display:grid; grid-template-columns:minmax(0,1fr); gap:10px; }
+.sideSelectorBlock { order:-1; padding:10px; border:2px solid #276ef1; border-radius:12px; background:#eef4ff; box-shadow:0 0 0 3px rgba(39,110,241,.10); }
+.sideSelectorTitle { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:8px; color:#174ea6; font-size:16px; font-weight:800; letter-spacing:.04em; }
+.sideSelectorTitle span { color:#536071; font-size:12px; font-weight:600; letter-spacing:0; }
+.sideRow { margin-top:0; }
+.sideRow .sideBtn { min-height:58px; font-size:22px; border-width:2px; }
+.sideRow .sideBtn.activeSide { box-shadow:0 0 0 4px rgba(39,110,241,.20); transform:translateY(-1px); }
+.sideRow .pendingSideBtn { color:#795500; background:#fff3c4; border-color:#d4aa22; }
+.sideRow .pendingSideBtn.activeSide { color:#4d3500; background:#ffd966; border-color:#b88900; box-shadow:0 0 0 4px rgba(212,170,34,.22); }
+.v6Keypad .v6MainGrid { grid-template-columns:repeat(4,minmax(70px,1fr)); }
+.orderTypePicker { display:grid; gap:5px; padding:10px 12px; border-bottom:1px solid var(--border); font-size:12px; font-weight:700; color:var(--muted); }
+.orderTypePicker select { min-width:220px; padding:8px; border:1px solid var(--border); border-radius:7px; background:#fff; color:var(--text); font-size:14px; }
+.reviewSidebar { width:min(78vw,980px); }
+.csvPreviewWrap { overflow:auto; height:100%; }
+.csvPreviewTable { width:max-content; min-width:100%; border-collapse:separate; border-spacing:0; font-size:13px; }
+.csvPreviewTable th,.csvPreviewTable td { min-width:110px; padding:8px 10px; border-right:1px solid var(--border); border-bottom:1px solid var(--border); text-align:left; white-space:nowrap; }
+.csvPreviewTable th { position:sticky; top:0; z-index:2; background:#f5f6f8; border-top:4px solid #777; font-weight:800; }
+.csvPreviewTable td { cursor:pointer; background:#fff; }
+.csvPreviewTable tr:nth-child(even) td { background:#fafbfc; }
+.csvPreviewTable td:hover { background:#eaf2ff; }
+@media (max-width:700px) { .measurementCard{width:98vw;padding:12px}.sideSelectorTitle{align-items:flex-start;flex-direction:column;gap:2px}.sideRow{grid-template-columns:repeat(5,minmax(48px,1fr))}.sideRow .sideBtn{min-height:52px} }
