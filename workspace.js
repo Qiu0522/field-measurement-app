@@ -66,10 +66,12 @@ const Workspace = (() => {
 
   let measurementCallback = null;
   let measurementRawValue = "";
-  let measurementSide = "";
 
   let directionCallback = null;
   let fileNameCallback = null;
+  let lastAutoSortDataId = null;
+  let lastAutoSortSide = "N";
+  let lastAutoSortDirection = "clockwise";
 
   let undoStack = [];
   let redoStack = [];
@@ -138,9 +140,12 @@ const Workspace = (() => {
     els.pointExcludeAction = document.getElementById("pointExcludeAction");
     els.pointDeleteAction = document.getElementById("pointDeleteAction");
 
-    els.orderMenu = document.getElementById("orderMenu");
-    els.autoSortAllAction = document.getElementById("autoSortAllAction");
-    els.orderDataSelect = document.getElementById("orderDataSelect");
+    els.autoSortModal = document.getElementById("autoSortModal");
+    els.autoSortDataType = document.getElementById("autoSortDataType");
+    els.autoSortSide = document.getElementById("autoSortSide");
+    els.autoSortDirectionChoices = Array.from(document.querySelectorAll('input[name="autoSortDirection"]'));
+    els.confirmAutoSortBtn = document.getElementById("confirmAutoSortBtn");
+    els.cancelAutoSortBtn = document.getElementById("cancelAutoSortBtn");
     els.sideChoices = Array.from(document.querySelectorAll(".sideBtn"));
 
     els.setPositionModal = document.getElementById("setPositionModal");
@@ -290,16 +295,8 @@ const Workspace = (() => {
     els.undoBtn.addEventListener("click", undo);
     els.redoBtn.addEventListener("click", redo);
 
-    els.orderBtn.addEventListener("click", event => {
-      event.stopPropagation();
-      const willShow = els.orderMenu.classList.contains("hidden");
-      els.orderMenu.classList.add("hidden");
-      if (!willShow) return;
-
-      const rect = els.orderBtn.getBoundingClientRect();
-      els.orderMenu.style.left = Math.max(8, rect.left) + "px";
-      els.orderMenu.style.top = (rect.bottom + 4) + "px";
-      els.orderMenu.classList.remove("hidden");
+    els.orderBtn.addEventListener("click", () => {
+      openAutoSortModal();
     });
 
     if (els.measureModeBtn) {
@@ -484,19 +481,14 @@ const Workspace = (() => {
 
     // Keypad side selection.
     els.sideChoices.forEach(button => {
-      button.addEventListener("click", () => setMeasurementSide(button.dataset.side || ""));
+      button.addEventListener("click", () => setCurrentSide(button.dataset.side || ""));
     });
 
-    // Order menu (Auto Sort per side / all).
-    els.orderMenu.querySelectorAll("[data-sort-side]").forEach(button => {
-      button.addEventListener("click", () => {
-        els.orderMenu.classList.add("hidden");
-        autoSortSideAction(button.dataset.sortSide);
-      });
-    });
-    els.autoSortAllAction.addEventListener("click", () => {
-      els.orderMenu.classList.add("hidden");
-      autoSortAll();
+    // Auto Sort dialog.
+    els.confirmAutoSortBtn.addEventListener("click", confirmAutoSort);
+    els.cancelAutoSortBtn.addEventListener("click", closeAutoSortModal);
+    els.autoSortModal.addEventListener("click", event => {
+      if (event.target === els.autoSortModal) closeAutoSortModal();
     });
 
     // Set Position modal.
@@ -789,23 +781,6 @@ const Workspace = (() => {
     }
 
     updateDataTypeSwatch();
-    renderOrderDataSelect(els.dataSelect.value);
-  }
-
-  function renderOrderDataSelect(selectedId = null) {
-    if (!els.orderDataSelect) return;
-    const previous = selectedId || els.orderDataSelect.value || els.dataSelect.value;
-    els.orderDataSelect.innerHTML = "";
-    dataTypes.forEach(dataType => {
-      const option = document.createElement("option");
-      option.value = dataType.id;
-      option.textContent = dataType.name;
-      option.style.color = dataType.color || "#111";
-      els.orderDataSelect.appendChild(option);
-    });
-    if (dataTypes.some(dataType => dataType.id === previous)) {
-      els.orderDataSelect.value = previous;
-    }
   }
 
   function updateDataTypeSwatch() {
@@ -954,15 +929,15 @@ const Workspace = (() => {
 
     if (pointMode !== "add") return;
 
-    openMeasurementModal("", "Enter Measurement", (value, side) => {
+    openMeasurementModal("", "Enter Measurement", value => {
       const cleanValue = value.trim();
       if (!cleanValue) return;
 
-      addPoint(position.x, position.y, cleanValue, side);
-    }, currentSide);
+      addPoint(position.x, position.y, cleanValue);
+    });
   }
 
-  function addPoint(x, y, measurement, side = currentSide) {
+  function addPoint(x, y, measurement) {
     const dataType = getDataType(els.dataSelect.value);
     if (!dataType) return;
 
@@ -976,7 +951,7 @@ const Workspace = (() => {
       moved: false,
       moveDistance: 0,
       excluded: false,
-      assignedSide: side || "",
+      assignedSide: currentSide,
       assignedSeq: ""
     };
 
@@ -985,10 +960,10 @@ const Workspace = (() => {
 
     // If this side is already locked (manually ordered), append the new point
     // at the end of that side; otherwise it just keeps creation order.
-    if (isSideLocked(dataType, side || "")) {
+    if (isSideLocked(dataType, currentSide)) {
       const sideMax = Math.max(
         0,
-        ...pointsInSide(dataType.id, side || "")
+        ...pointsInSide(dataType.id, currentSide)
           .filter(p => p !== point)
           .map(p => p.manualSeq || 0)
       );
@@ -1001,7 +976,7 @@ const Workspace = (() => {
     renderDataSelect(dataType.id);
     updateNoSideBanner();
 
-    setStatus(`${dataType.name}: ${measurement} added${side ? " (" + side + ")" : " (Pending Side)"}.`);
+    setStatus(`${dataType.name}: ${measurement} added${currentSide ? " (" + currentSide + ")" : " (no side)"}.`);
     scheduleAutoSave();
   }
 
@@ -1172,30 +1147,26 @@ const Workspace = (() => {
 
   function editPoint(point) {
     const oldValue = point.measurement;
-    const oldSide = point.assignedSide || "";
 
     openMeasurementModal(
       oldValue,
       "Edit Measurement",
-      (value, side) => {
+      value => {
         const newValue = value.trim();
-        const newSide = side || "";
-        if (!newValue) return;
-        if (newValue === oldValue && newSide === oldSide) return;
+        if (!newValue || newValue === oldValue) return;
 
         point.measurement = newValue;
-        point.assignedSide = newSide;
-        point.sideLocked = true;
 
-        pushUndo({ type: "edit", point, oldValue, newValue, oldSide, newSide });
+        pushUndo({
+          type: "edit",
+          point,
+          oldValue,
+          newValue
+        });
 
-        recalculateDataTypeOrder(point.dataId);
         updatePointElement(point);
-        updateNoSideBanner();
-        refreshReviewIfOpen();
         scheduleAutoSave();
-      },
-      oldSide
+      }
     );
   }
 
@@ -1533,16 +1504,23 @@ const Workspace = (() => {
     if (!dataType.lockedSides.includes(side)) dataType.lockedSides.push(side);
   }
 
-  function autoSortSide(dataId, side) {
+  function autoSortSide(dataId, side, direction = "clockwise") {
     const dataType = getDataType(dataId);
     if (!dataType) return;
 
     const sorted = pointsInSide(dataId, side).slice();
+    const clockwise = direction !== "counterclockwise";
+
+    // Clockwise: N left→right, E top→bottom, S right→left, W bottom→top.
+    // Counterclockwise reverses each side.
+    const ascending = clockwise
+      ? (side === "N" || side === "E")
+      : (side === "S" || side === "W");
 
     if (side === "E" || side === "W") {
-      sorted.sort((a, b) => a.y - b.y);
+      sorted.sort((a, b) => ascending ? a.y - b.y : b.y - a.y);
     } else {
-      sorted.sort((a, b) => a.x - b.x);
+      sorted.sort((a, b) => ascending ? a.x - b.x : b.x - a.x);
     }
 
     if (!Array.isArray(dataType.lockedSides)) dataType.lockedSides = [];
@@ -1809,48 +1787,74 @@ const Workspace = (() => {
   /* ---------- New ordering actions (Auto Sort / Set Position / Exclude) ---------- */
 
   function currentDataId() {
-    if (els.orderDataSelect && els.orderDataSelect.value) return els.orderDataSelect.value;
     return els.dataSelect ? els.dataSelect.value : null;
   }
 
-  function autoSortSideAction(side) {
-    const dataId = currentDataId();
-    const dataType = getDataType(dataId);
-    if (!dataType) return;
+  function openAutoSortModal() {
+    if (!els.autoSortModal) return;
 
-    if (!pointsInSide(dataId, side).length) {
-      setStatus(`No points on side ${side || "Unassigned"}.`);
+    const selectedDataId = lastAutoSortDataId || currentDataId() || (dataTypes[0] && dataTypes[0].id);
+    els.autoSortDataType.innerHTML = "";
+
+    dataTypes.forEach(dataType => {
+      const option = document.createElement("option");
+      option.value = dataType.id;
+      option.textContent = dataType.name;
+      els.autoSortDataType.appendChild(option);
+    });
+
+    if (selectedDataId && getDataType(selectedDataId)) {
+      els.autoSortDataType.value = selectedDataId;
+    }
+    els.autoSortSide.value = ["N", "E", "S", "W"].includes(lastAutoSortSide)
+      ? lastAutoSortSide
+      : "N";
+
+    els.autoSortDirectionChoices.forEach(choice => {
+      choice.checked = choice.value === lastAutoSortDirection;
+    });
+
+    els.autoSortModal.classList.remove("hidden");
+  }
+
+  function closeAutoSortModal() {
+    if (els.autoSortModal) els.autoSortModal.classList.add("hidden");
+  }
+
+  function confirmAutoSort() {
+    const dataId = els.autoSortDataType.value;
+    const side = els.autoSortSide.value;
+    const selectedDirection = els.autoSortDirectionChoices.find(choice => choice.checked);
+    const direction = selectedDirection ? selectedDirection.value : "clockwise";
+    const dataType = getDataType(dataId);
+
+    if (!dataType) {
+      setStatus("Choose a valid data type.");
       return;
     }
 
+    if (!pointsInSide(dataId, side).length) {
+      setStatus(`No ${dataType.name} points on side ${side}.`);
+      return;
+    }
+
+    lastAutoSortDataId = dataId;
+    lastAutoSortSide = side;
+    lastAutoSortDirection = direction;
+
     const before = snapshotOrder(dataId);
-    autoSortSide(dataId, side);
+    autoSortSide(dataId, side, direction);
     const after = snapshotOrder(dataId);
     pushUndo({ type: "reorder", dataId, before, after });
 
+    dataType.direction = direction;
     recalculateDataTypeOrder(dataId);
     refreshAllPoints();
     renderDataSelect(dataId);
-    setStatus(`Auto-sorted side ${side || "Unassigned"}.`);
-    scheduleAutoSave();
-  }
+    closeAutoSortModal();
 
-  function autoSortAll() {
-    const dataId = currentDataId();
-    const dataType = getDataType(dataId);
-    if (!dataType) return;
-
-    const before = snapshotOrder(dataId);
-    ["N", "E", "S", "W", ""].forEach(side => {
-      if (pointsInSide(dataId, side).length) autoSortSide(dataId, side);
-    });
-    const after = snapshotOrder(dataId);
-    pushUndo({ type: "reorder", dataId, before, after });
-
-    recalculateDataTypeOrder(dataId);
-    refreshAllPoints();
-    renderDataSelect(dataId);
-    setStatus("Auto-sorted all sides.");
+    const directionLabel = direction === "clockwise" ? "clockwise" : "counterclockwise";
+    setStatus(`Auto-sorted ${dataType.name} · ${side} · ${directionLabel}.`);
     scheduleAutoSave();
   }
 
@@ -1958,22 +1962,13 @@ const Workspace = (() => {
     updateToolButtons();
   }
 
-  function paintSideChoices(side) {
-    if (!els.sideChoices) return;
-    els.sideChoices.forEach(button => {
-      button.classList.toggle("activeSide", (button.dataset.side || "") === (side || ""));
-    });
-  }
-
-  function setMeasurementSide(side) {
-    measurementSide = side || "";
-    paintSideChoices(measurementSide);
-  }
-
   function setCurrentSide(side) {
     currentSide = side || "";
-    measurementSide = currentSide;
-    paintSideChoices(currentSide);
+    if (els.sideChoices) {
+      els.sideChoices.forEach(button => {
+        button.classList.toggle("activeSide", (button.dataset.side || "") === currentSide);
+      });
+    }
   }
 
   function noSidePoints() {
@@ -1986,7 +1981,7 @@ const Workspace = (() => {
 
     if (count > 0) {
       els.noSideBannerText.textContent =
-        `${count} measurement${count === 1 ? "" : "s"} have Pending Side. Tap to locate them.`;
+        `${count} measurement${count === 1 ? "" : "s"} have no Side. Tap to locate them.`;
       els.noSideBanner.classList.remove("hidden");
     } else {
       els.noSideBanner.classList.add("hidden");
@@ -2094,9 +2089,8 @@ const Workspace = (() => {
     );
   }
 
-  function openMeasurementModal(initialValue, title, callback, initialSide = currentSide) {
+  function openMeasurementModal(initialValue, title, callback) {
     setMeasurementRawValue(initialValue || "");
-    setMeasurementSide(initialSide || "");
     els.measurementTitle.textContent = title;
     measurementCallback = callback;
     hideMeasurementError();
@@ -2128,8 +2122,7 @@ const Workspace = (() => {
     hideMeasurementError();
     els.measurementModal.classList.add("hidden");
 
-    setCurrentSide(measurementSide);
-    if (callback) callback(value, measurementSide);
+    if (callback) callback(value);
   }
 
   function cancelMeasurement() {
@@ -2776,12 +2769,7 @@ const Workspace = (() => {
 
     if (action.type === "edit") {
       action.point.measurement = action.oldValue;
-      if (Object.prototype.hasOwnProperty.call(action, "oldSide")) {
-        action.point.assignedSide = action.oldSide || "";
-      }
-      recalculateDataTypeOrder(action.point.dataId);
       updatePointElement(action.point);
-      updateNoSideBanner();
     }
 
     if (action.type === "move") {
@@ -2860,12 +2848,7 @@ const Workspace = (() => {
 
     if (action.type === "edit") {
       action.point.measurement = action.newValue;
-      if (Object.prototype.hasOwnProperty.call(action, "newSide")) {
-        action.point.assignedSide = action.newSide || "";
-      }
-      recalculateDataTypeOrder(action.point.dataId);
       updatePointElement(action.point);
-      updateNoSideBanner();
     }
 
     if (action.type === "move") {
@@ -2935,7 +2918,7 @@ const Workspace = (() => {
     if (noSideCount > 0) {
       pendingExportTypes = exportTypes;
       els.noSideModalText.textContent =
-        `${noSideCount} measurement${noSideCount === 1 ? "" : "s"} have Pending Side. Resolve now?`;
+        `${noSideCount} measurement${noSideCount === 1 ? "" : "s"} have no Side. Resolve now?`;
       els.noSideModal.classList.remove("hidden");
       return;
     }
@@ -2967,6 +2950,7 @@ const Workspace = (() => {
         headers.push(dataType.name + " Side");
         headers.push(dataType.name + " Seq");
         headers.push(dataType.name + " Measurement");
+        headers.push(dataType.name + " Warning");
       });
 
       let csv = headers.map(cleanCSV).join(",") + "\n";
@@ -2978,7 +2962,7 @@ const Workspace = (() => {
           const item = grouped[dataType.id][rowIndex];
 
           if (!item) {
-            row.push("", "", "");
+            row.push("", "", "", "");
             return;
           }
 
@@ -2987,6 +2971,14 @@ const Workspace = (() => {
           row.push(item.side || "Unassigned");
           row.push(item.seq);
           row.push(point.measurement);
+
+          const notes = [];
+          if (point.moveDistance > 80) {
+            notes.push("Point moved a large distance; check order");
+          } else if (point.moved) {
+            notes.push("Point moved");
+          }
+          row.push(notes.join("; "));
         });
 
         csv += row.map(cleanCSV).join(",") + "\n";
@@ -3268,7 +3260,7 @@ const Workspace = (() => {
     changeZoom(1 - zoomLevel);
   }
 
-  /* ---------- CSV preview sidebar ---------- */
+  /* ---------- Review sidebar (on-screen measurement checklist) ---------- */
 
   function toggleReviewSidebar() {
     if (!els.reviewSidebar) return;
@@ -3290,64 +3282,119 @@ const Workspace = (() => {
   function renderReviewList() {
     const container = els.reviewList;
     if (!container) return;
+
     container.innerHTML = "";
 
-    const exportTypes = dataTypes.filter(dataType =>
-      dataType.export && points.some(point => point.dataId === dataType.id && !point.excluded)
+    const typesWithPoints = dataTypes.filter(dt =>
+      points.some(p => p.dataId === dt.id)
     );
 
-    if (!exportTypes.length) {
+    if (!typesWithPoints.length) {
       const empty = document.createElement("p");
       empty.className = "reviewEmpty";
-      empty.textContent = "No measurements available for CSV preview.";
+      empty.textContent = "No points yet. Add points, then reopen Review.";
       container.appendChild(empty);
       return;
     }
 
-    exportTypes.forEach(dataType => recalculateDataTypeOrder(dataType.id));
-    const grouped = {};
-    exportTypes.forEach(dataType => { grouped[dataType.id] = getOrderedPoints(dataType.id); });
-    const maxRows = Math.max(0, ...exportTypes.map(dataType => grouped[dataType.id].length));
-
-    const wrap = document.createElement("div");
-    wrap.className = "csvPreviewWrap";
-    const table = document.createElement("table");
-    table.className = "csvPreviewTable";
-    const thead = document.createElement("thead");
-    const headerRow = document.createElement("tr");
-
-    exportTypes.forEach(dataType => {
-      ["Side", "Seq", "Measurement"].forEach(label => {
-        const th = document.createElement("th");
-        th.textContent = dataType.name + " " + label;
-        th.style.borderTopColor = dataType.color || "#777";
-        headerRow.appendChild(th);
-      });
-    });
-    thead.appendChild(headerRow);
-    table.appendChild(thead);
-
-    const tbody = document.createElement("tbody");
-    for (let rowIndex = 0; rowIndex < maxRows; rowIndex += 1) {
-      const tr = document.createElement("tr");
-      exportTypes.forEach(dataType => {
-        const item = grouped[dataType.id][rowIndex];
-        const values = item ? [item.side || "Unassigned", item.seq, item.point.measurement || ""] : ["", "", ""];
-        values.forEach(value => {
-          const td = document.createElement("td");
-          td.textContent = value;
-          if (item) {
-            td.title = "Click to locate this point";
-            td.addEventListener("click", () => jumpToPoint(item.point));
-          }
-          tr.appendChild(td);
-        });
-      });
-      tbody.appendChild(tr);
+    // If the filtered type no longer has points, fall back to All.
+    if (reviewFilter !== "all" && !typesWithPoints.some(dt => dt.id === reviewFilter)) {
+      reviewFilter = "all";
     }
-    table.appendChild(tbody);
-    wrap.appendChild(table);
-    container.appendChild(wrap);
+
+    // Filter chips: All + one per data type that has points.
+    const filterBar = document.createElement("div");
+    filterBar.className = "reviewFilterBar";
+
+    const makeChip = (label, value, color) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "reviewChip" + (reviewFilter === value ? " active" : "");
+      chip.textContent = label;
+      if (color && reviewFilter === value) {
+        chip.style.background = color;
+        chip.style.borderColor = color;
+      }
+      chip.addEventListener("click", () => {
+        reviewFilter = value;
+        renderReviewList();
+      });
+      return chip;
+    };
+
+    filterBar.appendChild(makeChip("All", "all", null));
+    typesWithPoints.forEach(dt => {
+      filterBar.appendChild(makeChip(dt.name, dt.id, dt.color));
+    });
+    container.appendChild(filterBar);
+
+    const shownTypes = reviewFilter === "all"
+      ? typesWithPoints
+      : typesWithPoints.filter(dt => dt.id === reviewFilter);
+
+    shownTypes.forEach(dt => {
+      const section = document.createElement("div");
+      section.className = "reviewSection";
+
+      const header = document.createElement("div");
+      header.className = "reviewTypeHeader";
+      header.textContent = dt.name;
+      header.style.color = dt.color || "#111";
+      section.appendChild(header);
+
+      const list = getOrderedPoints(dt.id);
+
+      list.forEach(item => {
+        const row = document.createElement("button");
+        row.type = "button";
+        row.className = "reviewRow";
+
+        const tag = document.createElement("span");
+        tag.className = "reviewTag";
+        tag.textContent = (item.side || "U") + item.seq;
+
+        const val = document.createElement("span");
+        val.className = "reviewVal";
+        val.textContent = item.point.measurement || "(empty)";
+
+        row.appendChild(tag);
+        row.appendChild(val);
+        row.addEventListener("click", () => jumpToPoint(item.point));
+
+        section.appendChild(row);
+      });
+
+      // Excluded points for this type, greyed at the bottom of the section.
+      const excluded = points.filter(p => p.dataId === dt.id && p.excluded);
+      if (excluded.length) {
+        const exHeader = document.createElement("div");
+        exHeader.className = "reviewTypeHeader reviewExcludedHeader";
+        exHeader.textContent = "Excluded";
+        section.appendChild(exHeader);
+
+        excluded.forEach(point => {
+          const row = document.createElement("button");
+          row.type = "button";
+          row.className = "reviewRow reviewExcludedRow";
+
+          const tag = document.createElement("span");
+          tag.className = "reviewTag";
+          tag.textContent = "—";
+
+          const val = document.createElement("span");
+          val.className = "reviewVal";
+          val.textContent = point.measurement || "(empty)";
+
+          row.appendChild(tag);
+          row.appendChild(val);
+          row.addEventListener("click", () => jumpToPoint(point));
+
+          section.appendChild(row);
+        });
+      }
+
+      container.appendChild(section);
+    });
   }
 
   function jumpToPoint(point) {
