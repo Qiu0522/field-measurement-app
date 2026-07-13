@@ -59,6 +59,9 @@ const Workspace = (() => {
   let noteDrag = null;
   let textNoteColor = "#ff0000";
   let reviewFilter = "all";
+  let currentSide = "";
+  let setPositionPoint = null;
+  let pendingExportTypes = null;
 
   let measurementCallback = null;
   let measurementRawValue = "";
@@ -88,6 +91,7 @@ const Workspace = (() => {
     els.markupMenu = document.getElementById("markupMenu");
     els.markupSummary = document.getElementById("markupSummary");
     els.highlighterBtn = document.getElementById("highlighterBtn");
+    els.penBtn = document.getElementById("penBtn");
     els.eraserBtn = document.getElementById("eraserBtn");
     els.colorSwatches = Array.from(document.querySelectorAll("[data-brush-color]"));
     els.textColorSwatches = Array.from(document.querySelectorAll("[data-text-color]"));
@@ -123,12 +127,27 @@ const Workspace = (() => {
     els.commentCanvas = document.getElementById("commentCanvas");
 
     els.pointContextMenu = document.getElementById("pointContextMenu");
-    els.pointEditAction = document.getElementById("pointEditAction");
+    els.pointSetPositionAction = document.getElementById("pointSetPositionAction");
     els.pointMoveAction = document.getElementById("pointMoveAction");
-    els.pointAssignSideAction = document.getElementById("pointAssignSideAction");
-    els.pointMoveUpAction = document.getElementById("pointMoveUpAction");
-    els.pointMoveDownAction = document.getElementById("pointMoveDownAction");
+    els.pointExcludeAction = document.getElementById("pointExcludeAction");
     els.pointDeleteAction = document.getElementById("pointDeleteAction");
+
+    els.orderMenu = document.getElementById("orderMenu");
+    els.autoSortAllAction = document.getElementById("autoSortAllAction");
+    els.sideChoices = Array.from(document.querySelectorAll(".sideBtn"));
+
+    els.setPositionModal = document.getElementById("setPositionModal");
+    els.setPositionInfo = document.getElementById("setPositionInfo");
+    els.setPositionInput = document.getElementById("setPositionInput");
+    els.confirmSetPositionBtn = document.getElementById("confirmSetPositionBtn");
+    els.cancelSetPositionBtn = document.getElementById("cancelSetPositionBtn");
+
+    els.noSideModal = document.getElementById("noSideModal");
+    els.noSideModalText = document.getElementById("noSideModalText");
+    els.assignSideBtn = document.getElementById("assignSideBtn");
+    els.exportAnywayBtn = document.getElementById("exportAnywayBtn");
+    els.noSideBanner = document.getElementById("noSideBanner");
+    els.noSideBannerText = document.getElementById("noSideBannerText");
 
     els.reorderBar = document.getElementById("reorderBar");
     els.reorderBarText = document.getElementById("reorderBarText");
@@ -220,6 +239,7 @@ const Workspace = (() => {
     els.lockBtn.addEventListener("click", () => setPointMode("lock"));
     els.textBtn.addEventListener("click", () => toggleCommentTool("text"));
     els.highlighterBtn.addEventListener("click", () => toggleCommentTool("highlighter"));
+    if (els.penBtn) els.penBtn.addEventListener("click", () => toggleCommentTool("pen"));
     els.eraserBtn.addEventListener("click", () => toggleCommentTool("eraser"));
 
     if (els.markupSummary) {
@@ -263,7 +283,17 @@ const Workspace = (() => {
     els.undoBtn.addEventListener("click", undo);
     els.redoBtn.addEventListener("click", redo);
 
-    els.orderBtn.addEventListener("click", orderCurrentData);
+    els.orderBtn.addEventListener("click", event => {
+      event.stopPropagation();
+      const willShow = els.orderMenu.classList.contains("hidden");
+      els.orderMenu.classList.add("hidden");
+      if (!willShow) return;
+
+      const rect = els.orderBtn.getBoundingClientRect();
+      els.orderMenu.style.left = Math.max(8, rect.left) + "px";
+      els.orderMenu.style.top = (rect.bottom + 4) + "px";
+      els.orderMenu.classList.remove("hidden");
+    });
     els.batchAssignBtn.addEventListener("click", startBatchAssign);
     els.batchSideButtons.forEach(button => {
       button.addEventListener("click", () => applyBatchSide(button.dataset.batchSide));
@@ -410,9 +440,9 @@ const Workspace = (() => {
     els.drawingWrapper.addEventListener("touchend", endPinch);
     els.drawingWrapper.addEventListener("touchcancel", endPinch);
 
-    els.pointEditAction.addEventListener("click", () => {
+    els.pointSetPositionAction.addEventListener("click", () => {
       hidePointContextMenu();
-      if (contextPoint) editPoint(contextPoint);
+      if (contextPoint) openSetPosition(contextPoint);
     });
 
     els.pointMoveAction.addEventListener("click", () => {
@@ -433,20 +463,51 @@ const Workspace = (() => {
       setStatus("Move selected point: drag it or tap its new location. Page scrolling is locked while dragging.");
     });
 
-    els.pointAssignSideAction.addEventListener("click", () => {
+    els.pointExcludeAction.addEventListener("click", () => {
       hidePointContextMenu();
-      if (contextPoint) els.sideModal.classList.remove("hidden");
+      if (contextPoint) togglePointExclude(contextPoint);
     });
 
-    els.pointMoveUpAction.addEventListener("click", () => {
-      hidePointContextMenu();
-      if (contextPoint) movePointInSequence(contextPoint, -1);
+    // Keypad side selection.
+    els.sideChoices.forEach(button => {
+      button.addEventListener("click", () => setCurrentSide(button.dataset.side || ""));
     });
 
-    els.pointMoveDownAction.addEventListener("click", () => {
-      hidePointContextMenu();
-      if (contextPoint) movePointInSequence(contextPoint, 1);
+    // Order menu (Auto Sort per side / all).
+    els.orderMenu.querySelectorAll("[data-sort-side]").forEach(button => {
+      button.addEventListener("click", () => {
+        els.orderMenu.classList.add("hidden");
+        autoSortSideAction(button.dataset.sortSide);
+      });
     });
+    els.autoSortAllAction.addEventListener("click", () => {
+      els.orderMenu.classList.add("hidden");
+      autoSortAll();
+    });
+
+    // Set Position modal.
+    els.confirmSetPositionBtn.addEventListener("click", confirmSetPosition);
+    els.cancelSetPositionBtn.addEventListener("click", () => {
+      setPositionPoint = null;
+      els.setPositionModal.classList.add("hidden");
+    });
+    els.setPositionInput.addEventListener("keydown", event => {
+      if (event.key === "Enter") { event.preventDefault(); confirmSetPosition(); }
+    });
+
+    // No-side export gate + banner.
+    els.assignSideBtn.addEventListener("click", () => {
+      els.noSideModal.classList.add("hidden");
+      pendingExportTypes = null;
+      jumpToNextNoSide();
+    });
+    els.exportAnywayBtn.addEventListener("click", () => {
+      els.noSideModal.classList.add("hidden");
+      const types = pendingExportTypes;
+      pendingExportTypes = null;
+      if (types) proceedExportCSV(types);
+    });
+    els.noSideBanner.addEventListener("click", jumpToNextNoSide);
 
     els.reorderCancelBtn.addEventListener("click", cancelTapReorder);
 
@@ -458,6 +519,12 @@ const Workspace = (() => {
     document.addEventListener("click", event => {
       if (!els.pointContextMenu.contains(event.target)) {
         hidePointContextMenu();
+      }
+      if (els.orderMenu &&
+          !els.orderMenu.contains(event.target) &&
+          event.target !== els.orderBtn &&
+          !els.orderBtn.contains(event.target)) {
+        els.orderMenu.classList.add("hidden");
       }
     });
 
@@ -577,6 +644,14 @@ const Workspace = (() => {
     }
 
     points.forEach(createPointElement);
+
+    // New model: ensure every data type has a lockedSides list.
+    dataTypes.forEach(dt => {
+      if (!Array.isArray(dt.lockedSides)) dt.lockedSides = [];
+    });
+    setCurrentSide("");
+    reviewFilter = "all";
+    updateNoSideBanner();
 
     removeAllTextNoteElements();
     selectedNoteId = null;
@@ -759,6 +834,8 @@ const Workspace = (() => {
 
     if (commentTool === "text") {
       setStatus("Text ON: tap the drawing to place a text box.");
+    } else if (commentTool === "pen") {
+      setStatus("Pen ON: Apple Pencil draws; finger scrolls.");
     } else if (commentTool === "highlighter") {
       setStatus("Highlighter ON: Apple Pencil highlights; finger scrolls.");
     } else if (commentTool === "eraser") {
@@ -775,17 +852,19 @@ const Workspace = (() => {
       els.addBtn,
       els.lockBtn,
       els.textBtn,
+      els.penBtn,
       els.highlighterBtn,
       els.eraserBtn
-    ].forEach(button => button.classList.remove("activeTool"));
+    ].forEach(button => button && button.classList.remove("activeTool"));
 
     if (pointMode === "add") els.addBtn.classList.add("activeTool");
     if (pointMode === "lock") els.lockBtn.classList.add("activeTool");
     if (commentTool === "text") els.textBtn.classList.add("activeTool");
+    if (commentTool === "pen" && els.penBtn) els.penBtn.classList.add("activeTool");
     if (commentTool === "highlighter") els.highlighterBtn.classList.add("activeTool");
     if (commentTool === "eraser") els.eraserBtn.classList.add("activeTool");
     if (els.markupSummary) {
-      const names = { text: "T Text", highlighter: "🖍 Highlight", eraser: "Eraser" };
+      const names = { text: "T Text", pen: "✏️ Pen", highlighter: "🖍 Highlight", eraser: "Eraser" };
       els.markupSummary.textContent = commentTool === "none"
         ? "✎ Markup ▾"
         : `${names[commentTool]} ▾`;
@@ -858,21 +937,33 @@ const Workspace = (() => {
       measurement,
       moved: false,
       moveDistance: 0,
-      assignedSide: "",
+      excluded: false,
+      assignedSide: currentSide,
       assignedSeq: ""
     };
 
     points.push(point);
     dataType.counter += 1;
 
-    dataType.manual = false;
-    dataType.ordered = false;
+    // If this side is already locked (manually ordered), append the new point
+    // at the end of that side; otherwise it just keeps creation order.
+    if (isSideLocked(dataType, currentSide)) {
+      const sideMax = Math.max(
+        0,
+        ...pointsInSide(dataType.id, currentSide)
+          .filter(p => p !== point)
+          .map(p => p.manualSeq || 0)
+      );
+      point.manualSeq = sideMax + 1;
+    }
 
     pushUndo({ type: "add", point });
     createPointElement(point);
+    recalculateDataTypeOrder(dataType.id);
     renderDataSelect(dataType.id);
+    updateNoSideBanner();
 
-    setStatus(`${dataType.name}: ${measurement} added.`);
+    setStatus(`${dataType.name}: ${measurement} added${currentSide ? " (" + currentSide + ")" : " (no side)"}.`);
     scheduleAutoSave();
   }
 
@@ -1037,6 +1128,8 @@ const Workspace = (() => {
     element.style.top = point.y + "px";
     element.style.color = dataType?.color || "black";
     element.style.fontSize = labelFontSize + "px";
+    element.classList.toggle("excludedPoint", !!point.excluded);
+    element.classList.toggle("noSidePoint", !point.excluded && !(point.assignedSide || ""));
   }
 
   function editPoint(point) {
@@ -1070,14 +1163,11 @@ const Workspace = (() => {
     points = points.filter(item => item.uid !== point.uid);
     removePointElement(point.uid);
 
-    const dataType = getDataType(point.dataId);
-
-    if (dataType?.ordered) {
-      recalculateDataTypeOrder(point.dataId);
-    }
+    recalculateDataTypeOrder(point.dataId);
 
     pushUndo({ type: "delete", point });
     renderDataSelect(point.dataId);
+    updateNoSideBanner();
     scheduleAutoSave();
   }
 
@@ -1090,9 +1180,6 @@ const Workspace = (() => {
     point.y = y;
     point.moved = true;
     point.moveDistance += distance;
-
-    const dataType = getDataType(point.dataId);
-    if (dataType) dataType.manual = false;
 
     pushUndo({
       type: "move",
@@ -1115,15 +1202,11 @@ const Workspace = (() => {
   function showPointContextMenu(x, y, point) {
     contextPoint = point;
 
-    const dataType = getDataType(point.dataId);
-    const sideItems = dataType?.ordered
-      ? getOrderedPoints(point.dataId, dataType.direction || "clockwise")
-          .filter(item => item.side === point.assignedSide)
-      : [];
-    const sideIndex = sideItems.findIndex(item => item.point === point);
-    els.pointMoveUpAction.disabled = sideIndex <= 0;
-    els.pointMoveDownAction.disabled =
-      sideIndex < 0 || sideIndex >= sideItems.length - 1;
+    if (els.pointExcludeAction) {
+      els.pointExcludeAction.textContent = point.excluded
+        ? "Include in export"
+        : "Exclude from export";
+    }
 
     const left = Math.min(x, window.innerWidth - 195);
     const top = Math.min(y, window.innerHeight - 210);
@@ -1335,17 +1418,7 @@ const Workspace = (() => {
     const dataType = getDataType(dataId);
     if (!dataType) return;
 
-    // Automatic ordering clears any "moved up/down" notes; manual keeps them.
-    if (!dataType.manual) {
-      points
-        .filter(p => p.dataId === dataId)
-        .forEach(p => { p.orderNote = ""; });
-    }
-
-    const ordered = getOrderedPoints(
-      dataId,
-      dataType.direction || "clockwise"
-    );
+    const ordered = getOrderedPoints(dataId);
 
     ordered.forEach(item => {
       item.point.assignedSide = item.side;
@@ -1361,89 +1434,78 @@ const Workspace = (() => {
     manual order; adding/moving a point, assigning a side, or ordering again
     returns safely to the v6.2 geometric result.
   */
-  function getOrderedPoints(dataId, direction) {
-    const dataType = getDataType(dataId);
+  const SIDE_ORDER = ["N", "E", "S", "W", ""];
 
-    if (dataType && dataType.manual) {
-      return getManualOrderedPoints(dataId, direction);
-    }
+  function isSideLocked(dataType, side) {
+    return !!(dataType &&
+      Array.isArray(dataType.lockedSides) &&
+      dataType.lockedSides.includes(side));
+  }
 
-    const groups = {
-      N: [],
-      E: [],
-      S: [],
-      W: []
-    };
-
-    points
-      .filter(point => point.dataId === dataId)
-      .forEach(point => {
-        const side = point.assignedSide || "N";
-        groups[side].push(point);
-      });
-
-    if (direction === "clockwise") {
-      groups.N.sort((a, b) => a.x - b.x);
-      groups.E.sort((a, b) => a.y - b.y);
-      groups.S.sort((a, b) => b.x - a.x);
-      groups.W.sort((a, b) => b.y - a.y);
-
-      return buildOrderedList(groups, ["N", "E", "S", "W"]);
-    }
-
-    groups.N.sort((a, b) => b.x - a.x);
-    groups.W.sort((a, b) => a.y - b.y);
-    groups.S.sort((a, b) => a.x - b.x);
-    groups.E.sort((a, b) => b.y - a.y);
-
-    return buildOrderedList(groups, ["N", "W", "S", "E"]);
+  function pointsInSide(dataId, side) {
+    return points.filter(p =>
+      p.dataId === dataId &&
+      !p.excluded &&
+      (p.assignedSide || "") === side
+    );
   }
 
   /*
-    Manual order: within each side, points are sorted by their stored
-    manualSeq. buildOrderedList then renumbers them 1..n, so gaps left by
-    deletions do not matter.
+    Display order within one side. By default points keep their creation order
+    (the order they appear in the points array). Once a side is "locked" (Auto
+    Sort / Set Position), it is ordered by the stored manualSeq instead, and new
+    points append to the end.
   */
-  function getManualOrderedPoints(dataId, direction) {
-    const groups = {
-      N: [],
-      E: [],
-      S: [],
-      W: []
-    };
+  function orderedSidePoints(dataId, side) {
+    const dataType = getDataType(dataId);
+    const inSide = pointsInSide(dataId, side);
 
-    points
-      .filter(point => point.dataId === dataId)
-      .forEach(point => {
-        const side = point.assignedSide || "N";
-        groups[side].push(point);
-      });
-
-    Object.keys(groups).forEach(side => {
-      groups[side].sort((a, b) => (a.manualSeq || 0) - (b.manualSeq || 0));
-    });
-
-    const sideOrder = direction === "clockwise"
-      ? ["N", "E", "S", "W"]
-      : ["N", "W", "S", "E"];
-
-    return buildOrderedList(groups, sideOrder);
+    if (isSideLocked(dataType, side)) {
+      return inSide.slice().sort((a, b) => (a.manualSeq || 0) - (b.manualSeq || 0));
+    }
+    return inSide;
   }
 
-  function buildOrderedList(groups, order) {
+  function getOrderedPoints(dataId) {
     const result = [];
 
-    order.forEach(side => {
-      groups[side].forEach((point, index) => {
-        result.push({
-          point,
-          side,
-          seq: index + 1
-        });
+    SIDE_ORDER.forEach(side => {
+      orderedSidePoints(dataId, side).forEach((point, index) => {
+        result.push({ point, side, seq: index + 1 });
       });
     });
 
     return result;
+  }
+
+  function lockSide(dataId, side) {
+    const dataType = getDataType(dataId);
+    if (!dataType) return;
+
+    if (!Array.isArray(dataType.lockedSides)) dataType.lockedSides = [];
+
+    orderedSidePoints(dataId, side).forEach((point, index) => {
+      point.manualSeq = index + 1;
+    });
+
+    if (!dataType.lockedSides.includes(side)) dataType.lockedSides.push(side);
+  }
+
+  function autoSortSide(dataId, side) {
+    const dataType = getDataType(dataId);
+    if (!dataType) return;
+
+    const sorted = pointsInSide(dataId, side).slice();
+
+    if (side === "E" || side === "W") {
+      sorted.sort((a, b) => a.y - b.y);
+    } else {
+      sorted.sort((a, b) => a.x - b.x);
+    }
+
+    if (!Array.isArray(dataType.lockedSides)) dataType.lockedSides = [];
+    sorted.forEach((point, index) => { point.manualSeq = index + 1; });
+    if (!dataType.lockedSides.includes(side)) dataType.lockedSides.push(side);
   }
 
   function getBounds(typePoints) {
@@ -1481,16 +1543,16 @@ const Workspace = (() => {
     const dataType = getDataType(dataId);
 
     return {
-      manual: !!(dataType && dataType.manual),
-      ordered: !!(dataType && dataType.ordered),
+      lockedSides: dataType && Array.isArray(dataType.lockedSides)
+        ? dataType.lockedSides.slice()
+        : [],
       points: points
         .filter(p => p.dataId === dataId)
         .map(p => ({
           uid: p.uid,
           manualSeq: p.manualSeq,
           assignedSide: p.assignedSide,
-          sideLocked: !!p.sideLocked,
-          orderNote: p.orderNote || ""
+          excluded: !!p.excluded
         }))
     };
   }
@@ -1499,8 +1561,9 @@ const Workspace = (() => {
     const dataType = getDataType(dataId);
 
     if (dataType) {
-      dataType.manual = snap.manual;
-      dataType.ordered = snap.ordered;
+      dataType.lockedSides = Array.isArray(snap.lockedSides)
+        ? snap.lockedSides.slice()
+        : [];
     }
 
     const byUid = {};
@@ -1515,8 +1578,7 @@ const Workspace = (() => {
         if (entry) {
           p.manualSeq = entry.manualSeq;
           p.assignedSide = entry.assignedSide;
-          p.sideLocked = !!entry.sideLocked;
-          p.orderNote = entry.orderNote || "";
+          p.excluded = !!entry.excluded;
         }
       });
 
@@ -1700,6 +1762,161 @@ const Workspace = (() => {
     els.reorderBar.classList.add("hidden");
     refreshAllPoints();
     setStatus("Reorder cancelled.");
+  }
+
+  /* ---------- New ordering actions (Auto Sort / Set Position / Exclude) ---------- */
+
+  function currentDataId() {
+    return els.dataSelect ? els.dataSelect.value : null;
+  }
+
+  function autoSortSideAction(side) {
+    const dataId = currentDataId();
+    const dataType = getDataType(dataId);
+    if (!dataType) return;
+
+    if (!pointsInSide(dataId, side).length) {
+      setStatus(`No points on side ${side || "Unassigned"}.`);
+      return;
+    }
+
+    const before = snapshotOrder(dataId);
+    autoSortSide(dataId, side);
+    const after = snapshotOrder(dataId);
+    pushUndo({ type: "reorder", dataId, before, after });
+
+    recalculateDataTypeOrder(dataId);
+    refreshAllPoints();
+    renderDataSelect(dataId);
+    setStatus(`Auto-sorted side ${side || "Unassigned"}.`);
+    scheduleAutoSave();
+  }
+
+  function autoSortAll() {
+    const dataId = currentDataId();
+    const dataType = getDataType(dataId);
+    if (!dataType) return;
+
+    const before = snapshotOrder(dataId);
+    ["N", "E", "S", "W", ""].forEach(side => {
+      if (pointsInSide(dataId, side).length) autoSortSide(dataId, side);
+    });
+    const after = snapshotOrder(dataId);
+    pushUndo({ type: "reorder", dataId, before, after });
+
+    recalculateDataTypeOrder(dataId);
+    refreshAllPoints();
+    renderDataSelect(dataId);
+    setStatus("Auto-sorted all sides.");
+    scheduleAutoSave();
+  }
+
+  function openSetPosition(point) {
+    setPositionPoint = point;
+    const side = point.assignedSide || "";
+    const list = orderedSidePoints(point.dataId, side);
+    const current = list.indexOf(point) + 1;
+
+    els.setPositionInfo.textContent =
+      `Side ${side || "Unassigned"} · ${list.length} point${list.length === 1 ? "" : "s"}`;
+    els.setPositionInput.value = String(current > 0 ? current : 1);
+    els.setPositionInput.max = String(Math.max(1, list.length));
+    els.setPositionModal.classList.remove("hidden");
+
+    setTimeout(() => {
+      els.setPositionInput.focus();
+      els.setPositionInput.select();
+    }, 30);
+  }
+
+  function confirmSetPosition() {
+    const point = setPositionPoint;
+    els.setPositionModal.classList.add("hidden");
+    setPositionPoint = null;
+    if (!point) return;
+
+    const target = parseInt(els.setPositionInput.value, 10);
+    if (!Number.isFinite(target)) return;
+
+    setPointPosition(point, target);
+  }
+
+  function setPointPosition(point, targetPos) {
+    const dataId = point.dataId;
+    const side = point.assignedSide || "";
+
+    const before = snapshotOrder(dataId);
+    lockSide(dataId, side);
+
+    const list = orderedSidePoints(dataId, side);
+    const from = list.indexOf(point);
+    if (from < 0) return;
+
+    const to = Math.max(0, Math.min(list.length - 1, targetPos - 1));
+    list.splice(from, 1);
+    list.splice(to, 0, point);
+    list.forEach((p, i) => { p.manualSeq = i + 1; });
+
+    const after = snapshotOrder(dataId);
+    pushUndo({ type: "reorder", dataId, before, after });
+
+    recalculateDataTypeOrder(dataId);
+    refreshAllPoints();
+    renderDataSelect(dataId);
+    setStatus(`Moved to position ${to + 1} on side ${side || "Unassigned"}.`);
+    scheduleAutoSave();
+  }
+
+  function togglePointExclude(point) {
+    const dataId = point.dataId;
+    const before = snapshotOrder(dataId);
+    point.excluded = !point.excluded;
+    const after = snapshotOrder(dataId);
+    pushUndo({ type: "reorder", dataId, before, after });
+
+    recalculateDataTypeOrder(dataId);
+    refreshAllPoints();
+    renderDataSelect(dataId);
+    updateNoSideBanner();
+    setStatus(point.excluded
+      ? "Point excluded from export."
+      : "Point included in export.");
+    scheduleAutoSave();
+  }
+
+  /* ---------- Current side (chosen on the keypad, inherited by new points) ---------- */
+
+  function setCurrentSide(side) {
+    currentSide = side || "";
+    if (els.sideChoices) {
+      els.sideChoices.forEach(button => {
+        button.classList.toggle("activeSide", (button.dataset.side || "") === currentSide);
+      });
+    }
+  }
+
+  function noSidePoints() {
+    return points.filter(p => !p.excluded && !(p.assignedSide || ""));
+  }
+
+  function updateNoSideBanner() {
+    if (!els.noSideBanner) return;
+    const count = noSidePoints().length;
+
+    if (count > 0) {
+      els.noSideBannerText.textContent =
+        `${count} measurement${count === 1 ? "" : "s"} have no Side. Tap to locate them.`;
+      els.noSideBanner.classList.remove("hidden");
+    } else {
+      els.noSideBanner.classList.add("hidden");
+    }
+  }
+
+  function jumpToNextNoSide() {
+    const list = noSidePoints();
+    if (!list.length) return;
+    jumpToPoint(list[0]);
+    setStatus("Assign a side on the keypad, then re-tap this point, or use it as-is.");
   }
 
   function toggleOrderLabels() {
@@ -2608,23 +2825,33 @@ const Workspace = (() => {
   function exportCSV() {
     const exportTypes = dataTypes.filter(dataType =>
       dataType.export &&
-      points.some(point => point.dataId === dataType.id)
+      points.some(point => point.dataId === dataType.id && !point.excluded)
     );
 
-    const unorderedTypes =
-      exportTypes.filter(dataType => !dataType.ordered);
-
-    if (unorderedTypes.length) {
-      alert(
-        "Order these data types before exporting:\n\n" +
-        unorderedTypes.map(dataType => "• " + dataType.name).join("\n")
-      );
+    if (!exportTypes.length) {
+      setStatus("No points to export.");
       return;
     }
 
-    exportTypes.forEach(dataType => {
-      recalculateDataTypeOrder(dataType.id);
-    });
+    const noSideCount = points.filter(point =>
+      !point.excluded &&
+      !(point.assignedSide || "") &&
+      exportTypes.some(dt => dt.id === point.dataId)
+    ).length;
+
+    if (noSideCount > 0) {
+      pendingExportTypes = exportTypes;
+      els.noSideModalText.textContent =
+        `${noSideCount} measurement${noSideCount === 1 ? "" : "s"} have no Side. Resolve now?`;
+      els.noSideModal.classList.remove("hidden");
+      return;
+    }
+
+    proceedExportCSV(exportTypes);
+  }
+
+  function proceedExportCSV(exportTypes) {
+    exportTypes.forEach(dataType => recalculateDataTypeOrder(dataType.id));
 
     openFileNameModal("Export CSV", project?.name || "measurements", chosen => {
       if (!chosen) return;
@@ -2633,12 +2860,8 @@ const Workspace = (() => {
         chosen.toLowerCase().endsWith(".csv") ? chosen : chosen + ".csv";
 
       const grouped = {};
-
       exportTypes.forEach(dataType => {
-        grouped[dataType.id] = getOrderedPoints(
-          dataType.id,
-          dataType.direction || "clockwise"
-        );
+        grouped[dataType.id] = getOrderedPoints(dataType.id);
       });
 
       const maxRows = Math.max(
@@ -2647,7 +2870,6 @@ const Workspace = (() => {
       );
 
       const headers = [];
-
       exportTypes.forEach(dataType => {
         headers.push(dataType.name + " Side");
         headers.push(dataType.name + " Seq");
@@ -2670,24 +2892,16 @@ const Workspace = (() => {
 
           const point = item.point;
 
-          row.push(item.side);
+          row.push(item.side || "Unassigned");
           row.push(item.seq);
           row.push(point.measurement);
 
           const notes = [];
-
           if (point.moveDistance > 80) {
             notes.push("Point moved a large distance; check order");
           } else if (point.moved) {
             notes.push("Point moved");
           }
-
-          if (point.orderNote === "up") {
-            notes.push("Point moved up in order");
-          } else if (point.orderNote === "down") {
-            notes.push("Point moved down in order");
-          }
-
           row.push(notes.join("; "));
         });
 
@@ -2695,10 +2909,7 @@ const Workspace = (() => {
       }
 
       downloadBlob(
-        new Blob(
-          ["\ufeff" + csv],
-          { type: "text/csv;charset=utf-8" }
-        ),
+        new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" }),
         fileName
       );
     });
@@ -3051,15 +3262,11 @@ const Workspace = (() => {
 
       const header = document.createElement("div");
       header.className = "reviewTypeHeader";
-      header.textContent = dt.name + (dt.ordered ? "" : "  (not ordered)");
+      header.textContent = dt.name;
       header.style.color = dt.color || "#111";
       section.appendChild(header);
 
-      const list = dt.ordered
-        ? getOrderedPoints(dt.id, dt.direction || "clockwise")
-        : points
-            .filter(p => p.dataId === dt.id)
-            .map(p => ({ point: p, side: "", seq: "" }));
+      const list = getOrderedPoints(dt.id);
 
       list.forEach(item => {
         const row = document.createElement("button");
@@ -3068,7 +3275,7 @@ const Workspace = (() => {
 
         const tag = document.createElement("span");
         tag.className = "reviewTag";
-        tag.textContent = dt.ordered ? `${item.side}${item.seq}` : "•";
+        tag.textContent = (item.side || "U") + item.seq;
 
         const val = document.createElement("span");
         val.className = "reviewVal";
@@ -3080,6 +3287,35 @@ const Workspace = (() => {
 
         section.appendChild(row);
       });
+
+      // Excluded points for this type, greyed at the bottom of the section.
+      const excluded = points.filter(p => p.dataId === dt.id && p.excluded);
+      if (excluded.length) {
+        const exHeader = document.createElement("div");
+        exHeader.className = "reviewTypeHeader reviewExcludedHeader";
+        exHeader.textContent = "Excluded";
+        section.appendChild(exHeader);
+
+        excluded.forEach(point => {
+          const row = document.createElement("button");
+          row.type = "button";
+          row.className = "reviewRow reviewExcludedRow";
+
+          const tag = document.createElement("span");
+          tag.className = "reviewTag";
+          tag.textContent = "—";
+
+          const val = document.createElement("span");
+          val.className = "reviewVal";
+          val.textContent = point.measurement || "(empty)";
+
+          row.appendChild(tag);
+          row.appendChild(val);
+          row.addEventListener("click", () => jumpToPoint(point));
+
+          section.appendChild(row);
+        });
+      }
 
       container.appendChild(section);
     });

@@ -114,6 +114,7 @@
           <div class="markupMenuPanel">
             <div class="markupToolRow">
         <button id="textBtn" class="toolbarButton toolButton" type="button" title="Text Box">T Text</button>
+        <button id="penBtn" class="toolbarButton toolButton" type="button" title="Pen">✏️ Pen</button>
         <button id="highlighterBtn" class="toolbarButton toolButton" type="button" title="Highlighter">🖍 Highlight</button>
         <button id="eraserBtn" class="toolbarButton toolButton" type="button" title="Eraser">
         <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor"
@@ -169,6 +170,10 @@
         <canvas id="commentCanvas"></canvas>
       </div>
     </div>
+    <div id="noSideBanner" class="noSideBanner hidden">
+      <span id="noSideBannerText"></span>
+    </div>
+
     <aside id="reviewSidebar" class="reviewSidebar hidden">
       <div class="reviewHeader">
         <span>Review measurements</span>
@@ -208,12 +213,43 @@
   </div>
 
   <div id="pointContextMenu" class="popupMenu hidden">
-    <button id="pointEditAction" type="button">Edit Measurement</button>
-    <button id="pointMoveAction" type="button">Move Point</button>
-    <button id="pointAssignSideAction" type="button">Assign Side</button>
-    <button id="pointMoveUpAction" type="button">↑ Move Up in Order</button>
-    <button id="pointMoveDownAction" type="button">↓ Move Down in Order</button>
-    <button id="pointDeleteAction" class="dangerText" type="button">Delete Point</button>
+    <button id="pointSetPositionAction" type="button">Set Position…</button>
+    <button id="pointMoveAction" type="button">Move</button>
+    <button id="pointExcludeAction" type="button">Exclude from export</button>
+    <button id="pointDeleteAction" class="dangerText" type="button">Delete</button>
+  </div>
+
+  <div id="orderMenu" class="popupMenu hidden">
+    <button data-sort-side="N" type="button">Auto Sort N</button>
+    <button data-sort-side="E" type="button">Auto Sort E</button>
+    <button data-sort-side="S" type="button">Auto Sort S</button>
+    <button data-sort-side="W" type="button">Auto Sort W</button>
+    <button id="autoSortAllAction" type="button">Auto Sort All</button>
+  </div>
+
+  <div id="setPositionModal" class="modalBackdrop hidden">
+    <div class="modalCard">
+      <h2>Set Position</h2>
+      <p id="setPositionInfo" class="setPositionInfo"></p>
+      <label>Move to position
+        <input id="setPositionInput" type="number" min="1" step="1" inputmode="numeric">
+      </label>
+      <div class="modalActions">
+        <button id="cancelSetPositionBtn" type="button">Cancel</button>
+        <button id="confirmSetPositionBtn" class="primaryButton" type="button">Move</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="noSideModal" class="modalBackdrop hidden">
+    <div class="modalCard">
+      <h2>Unassigned measurements</h2>
+      <p id="noSideModalText"></p>
+      <div class="modalActions">
+        <button id="assignSideBtn" class="primaryButton" type="button">Assign Side</button>
+        <button id="exportAnywayBtn" type="button">Export Anyway</button>
+      </div>
+    </div>
   </div>
 
   <!-- Hidden input for choosing a backup file to restore -->
@@ -330,6 +366,14 @@
           <button data-denominator="4" class="fractionButton">/4</button>
           <button data-denominator="8" class="fractionButton">/8</button>
           <button data-denominator="16" class="fractionButton">/16</button>
+        </div>
+
+        <div class="sideRow">
+          <button class="sideBtn activeSide" data-side="" type="button">None</button>
+          <button class="sideBtn" data-side="N" type="button">N</button>
+          <button class="sideBtn" data-side="E" type="button">E</button>
+          <button class="sideBtn" data-side="S" type="button">S</button>
+          <button class="sideBtn" data-side="W" type="button">W</button>
         </div>
 
         <button data-key=" " class="spaceButton">SPACE</button>
