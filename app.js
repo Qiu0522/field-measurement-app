@@ -14,6 +14,10 @@ const App = (() => {
   let pendingBackup = null;
   let replaceArmed = false;
 
+  let selectionMode = false;
+  const selectedTransferItems = new Set();
+  let pendingConflictResolve = null;
+
   const els = {};
 
   function init() {
@@ -52,6 +56,21 @@ const App = (() => {
     els.exportFileAction = document.getElementById("exportFileAction");
     els.importFileBtn = document.getElementById("importFileBtn");
     els.importFileInput = document.getElementById("importFileInput");
+    els.selectProjectsBtn = document.getElementById("selectProjectsBtn");
+    els.exportProjectsBtn = document.getElementById("exportProjectsBtn");
+    els.cancelSelectionBtn = document.getElementById("cancelSelectionBtn");
+    els.transferExportModal = document.getElementById("transferExportModal");
+    els.transferExportSummary = document.getElementById("transferExportSummary");
+    els.includePdfCheckbox = document.getElementById("includePdfCheckbox");
+    els.cancelTransferExportBtn = document.getElementById("cancelTransferExportBtn");
+    els.confirmTransferExportBtn = document.getElementById("confirmTransferExportBtn");
+    els.transferConflictModal = document.getElementById("transferConflictModal");
+    els.transferConflictSummary = document.getElementById("transferConflictSummary");
+    els.existingProjectTime = document.getElementById("existingProjectTime");
+    els.incomingProjectTime = document.getElementById("incomingProjectTime");
+    els.keepBothConflictBtn = document.getElementById("keepBothConflictBtn");
+    els.overwriteConflictBtn = document.getElementById("overwriteConflictBtn");
+    els.cancelConflictBtn = document.getElementById("cancelConflictBtn");
     els.backupStatus = document.getElementById("backupStatus");
     els.renameModal = document.getElementById("renameModal");
     els.renameModalTitle = document.getElementById("renameModalTitle");
@@ -154,6 +173,15 @@ const App = (() => {
     });
     els.importFileInput.addEventListener("change", handleImportFile);
 
+    els.selectProjectsBtn.addEventListener("click", enterSelectionMode);
+    els.cancelSelectionBtn.addEventListener("click", exitSelectionMode);
+    els.exportProjectsBtn.addEventListener("click", openTransferExportModal);
+    els.cancelTransferExportBtn.addEventListener("click", closeTransferExportModal);
+    els.confirmTransferExportBtn.addEventListener("click", exportSelectedTransferPackage);
+    els.keepBothConflictBtn.addEventListener("click", () => resolveTransferConflict("keep-both"));
+    els.overwriteConflictBtn.addEventListener("click", () => resolveTransferConflict("overwrite"));
+    els.cancelConflictBtn.addEventListener("click", () => resolveTransferConflict("cancel"));
+
     els.cancelRenameBtn.addEventListener("click", () => {
       pendingRename = null;
       els.renameModal.classList.add("hidden");
@@ -247,7 +275,16 @@ const App = (() => {
 
     openArea.append(preview, title, meta);
 
+    if (selectionMode) {
+      card.classList.add("selectionMode");
+      addTransferCheck(card, "folder", folder.id);
+    }
+
     openArea.addEventListener("click", () => {
+      if (selectionMode) {
+        toggleTransferSelection("folder", folder.id);
+        return;
+      }
       currentFolderId = folder.id;
       els.projectSearch.value = "";
       renderLibrary();
@@ -257,6 +294,7 @@ const App = (() => {
       type: "folder",
       id: folder.id
     });
+    menuButton.classList.toggle("hidden", selectionMode);
 
     card.append(openArea, menuButton);
     return card;
@@ -289,12 +327,23 @@ const App = (() => {
       `${pointCount} points · Updated ${formatDate(project.updatedAt)}`;
 
     openArea.append(preview, title, meta, updated);
-    openArea.addEventListener("click", () => openProject(project.id));
+    if (selectionMode) {
+      card.classList.add("selectionMode");
+      addTransferCheck(card, "project", project.id);
+    }
+    openArea.addEventListener("click", () => {
+      if (selectionMode) {
+        toggleTransferSelection("project", project.id);
+        return;
+      }
+      openProject(project.id);
+    });
 
     const menuButton = makeMenuButton({
       type: "project",
       id: project.id
     });
+    menuButton.classList.toggle("hidden", selectionMode);
 
     card.append(openArea, menuButton);
     return card;
@@ -489,8 +538,10 @@ const App = (() => {
 
     const now = Date.now();
 
+    const newProjectId = ProjectDB.makeId("project");
     const project = {
-      id: ProjectDB.makeId("project"),
+      id: newProjectId,
+      projectId: newProjectId,
       name,
       folderId: currentFolderId,
       kind: pendingProjectKind,
@@ -643,6 +694,12 @@ const App = (() => {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    if (/\.zip$/i.test(file.name) || file.type === "application/zip") {
+      await importTransferPackage(file);
+      event.target.value = "";
+      return;
+    }
+
     let data;
     try {
       data = JSON.parse(await file.text());
@@ -652,7 +709,7 @@ const App = (() => {
     }
 
     if (!data || data.format !== "field-measurement-file") {
-      alert("That is not a single-file export. For a whole-library backup file, use Restore instead.");
+      alert("That is not a project transfer ZIP or single-file export.");
       return;
     }
 
@@ -865,6 +922,356 @@ const App = (() => {
     link.remove();
 
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  /* ---------- Batch project transfer ZIP ---------- */
+
+  function transferKey(type, id) {
+    return `${type}:${id}`;
+  }
+
+  function enterSelectionMode() {
+    selectionMode = true;
+    selectedTransferItems.clear();
+    updateSelectionControls();
+    renderLibrary();
+  }
+
+  function exitSelectionMode() {
+    selectionMode = false;
+    selectedTransferItems.clear();
+    updateSelectionControls();
+    renderLibrary();
+  }
+
+  function addTransferCheck(card, type, id) {
+    const key = transferKey(type, id);
+    const check = document.createElement("span");
+    check.className = "transferCheck";
+    check.textContent = selectedTransferItems.has(key) ? "✓" : "";
+    check.addEventListener("click", event => {
+      event.stopPropagation();
+      toggleTransferSelection(type, id);
+    });
+    card.classList.toggle("selectedForTransfer", selectedTransferItems.has(key));
+    card.prepend(check);
+  }
+
+  function toggleTransferSelection(type, id) {
+    const key = transferKey(type, id);
+    if (selectedTransferItems.has(key)) selectedTransferItems.delete(key);
+    else selectedTransferItems.add(key);
+    updateSelectionControls();
+    renderLibrary();
+  }
+
+  function updateSelectionControls() {
+    const count = selectedTransferItems.size;
+    els.selectProjectsBtn.classList.toggle("hidden", selectionMode);
+    els.exportProjectsBtn.classList.toggle("hidden", !selectionMode);
+    els.cancelSelectionBtn.classList.toggle("hidden", !selectionMode);
+    els.exportProjectsBtn.textContent = count
+      ? `⇧ Export Project (${count})`
+      : "⇧ Export Project";
+    els.exportProjectsBtn.disabled = count === 0;
+  }
+
+  function collectTransferSelection() {
+    const folderIds = new Set();
+    const projectIds = new Set();
+
+    selectedTransferItems.forEach(key => {
+      const [type, id] = key.split(":");
+      if (type === "folder") folderIds.add(id);
+      if (type === "project") projectIds.add(id);
+    });
+
+    let changed = true;
+    while (changed) {
+      changed = false;
+      folders.forEach(folder => {
+        if (folder.parentId && folderIds.has(folder.parentId) && !folderIds.has(folder.id)) {
+          folderIds.add(folder.id);
+          changed = true;
+        }
+      });
+    }
+
+    projects.forEach(project => {
+      if (project.folderId && folderIds.has(project.folderId)) projectIds.add(project.id);
+    });
+
+    return {
+      folders: folders.filter(folder => folderIds.has(folder.id)),
+      projects: projects.filter(project => projectIds.has(project.id))
+    };
+  }
+
+  function openTransferExportModal() {
+    const selection = collectTransferSelection();
+    if (!selection.projects.length) {
+      alert("Select at least one work file, or a folder containing work files.");
+      return;
+    }
+    els.transferExportSummary.textContent =
+      `${selection.projects.length} project${selection.projects.length === 1 ? "" : "s"} ` +
+      `and ${selection.folders.length} folder${selection.folders.length === 1 ? "" : "s"} selected.`;
+    els.includePdfCheckbox.checked = true;
+    els.transferExportModal.classList.remove("hidden");
+  }
+
+  function closeTransferExportModal() {
+    els.transferExportModal.classList.add("hidden");
+  }
+
+  function safeTransferName(name, fallback) {
+    const cleaned = String(name || fallback)
+      .replace(/[\\/:*?"<>|]+/g, "-")
+      .replace(/\s+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "");
+    return cleaned || fallback;
+  }
+
+  async function exportSelectedTransferPackage() {
+    if (typeof JSZip === "undefined") {
+      alert("ZIP support did not load. Reload the app while online once, then try again.");
+      return;
+    }
+
+    const selection = collectTransferSelection();
+    if (!selection.projects.length) return;
+
+    const includePdf = els.includePdfCheckbox.checked;
+    els.confirmTransferExportBtn.disabled = true;
+    els.confirmTransferExportBtn.textContent = "Preparing…";
+
+    try {
+      const zip = new JSZip();
+      const usedNames = new Set();
+      const manifestProjects = [];
+
+      for (const summary of selection.projects) {
+        const project = await ProjectDB.getProject(summary.id);
+        if (!project) continue;
+
+        const sourceProjectId = project.projectId || project.id;
+        let base = safeTransferName(project.name, sourceProjectId);
+        let uniqueBase = base;
+        let suffix = 2;
+        while (usedNames.has(uniqueBase.toLowerCase())) uniqueBase = `${base}-${suffix++}`;
+        usedNames.add(uniqueBase.toLowerCase());
+
+        const projectPath = `projects/${uniqueBase}.json`;
+        const pdfPath = includePdf && project.pdfData instanceof ArrayBuffer
+          ? `pdf/${uniqueBase}.pdf`
+          : null;
+
+        const cleanProject = { ...project, projectId: sourceProjectId };
+        delete cleanProject.pdfData;
+        delete cleanProject._assetSaved;
+
+        const projectFile = {
+          format: "field-measurement-project",
+          version: 1,
+          projectId: sourceProjectId,
+          updatedAt: project.updatedAt || Date.now(),
+          project: cleanProject
+        };
+
+        zip.file(projectPath, JSON.stringify(projectFile, null, 2));
+        if (pdfPath) zip.file(pdfPath, project.pdfData);
+
+        manifestProjects.push({
+          projectId: sourceProjectId,
+          name: project.name,
+          updatedAt: project.updatedAt || null,
+          folderId: project.folderId || null,
+          projectPath,
+          pdfPath
+        });
+      }
+
+      const manifest = {
+        format: "field-measurement-backup",
+        version: 1,
+        packageType: "project-transfer",
+        exportedAt: new Date().toISOString(),
+        includesPdf: includePdf,
+        counts: {
+          folders: selection.folders.length,
+          projects: manifestProjects.length,
+          pdfs: manifestProjects.filter(item => item.pdfPath).length
+        },
+        folders: selection.folders.map(folder => ({ ...folder })),
+        projects: manifestProjects
+      };
+
+      zip.file("manifest.json", JSON.stringify(manifest, null, 2));
+      const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE", compressionOptions: { level: 6 } });
+      const stamp = new Date().toISOString().slice(0, 10);
+      const rootName = selection.projects.length === 1
+        ? safeTransferName(selection.projects[0].name, "Project")
+        : "Field-Projects";
+      downloadBlob(blob, `${rootName}-Field-Backup-${stamp}.zip`);
+
+      closeTransferExportModal();
+      exitSelectionMode();
+      alert(
+        `Transfer package created.\n\n${manifest.counts.projects} projects\n` +
+        `${manifest.counts.pdfs} PDF files\n\nSave or share the ZIP through iCloud Drive, Google Drive, OneDrive, or email.`
+      );
+    } catch (error) {
+      alert("Project export failed: " + explainDbError(error));
+    } finally {
+      els.confirmTransferExportBtn.disabled = false;
+      els.confirmTransferExportBtn.textContent = "Export ZIP";
+    }
+  }
+
+  async function importTransferPackage(file) {
+    if (typeof JSZip === "undefined") {
+      alert("ZIP support did not load. Reload the app while online once, then try again.");
+      return;
+    }
+
+    try {
+      const zip = await JSZip.loadAsync(file);
+      const manifestEntry = zip.file("manifest.json");
+      if (!manifestEntry) throw new Error("manifest.json is missing.");
+
+      const manifest = JSON.parse(await manifestEntry.async("text"));
+      if (manifest.format !== "field-measurement-backup" || manifest.version !== 1 || manifest.packageType !== "project-transfer") {
+        throw new Error("This ZIP is not a supported Field Measurement transfer package.");
+      }
+
+      const incomingFolders = Array.isArray(manifest.folders) ? manifest.folders : [];
+      const incomingProjects = Array.isArray(manifest.projects) ? manifest.projects : [];
+      if (!incomingProjects.length) throw new Error("The transfer package contains no projects.");
+
+      const folderMap = await importTransferFolders(incomingFolders);
+      let imported = 0;
+      let overwritten = 0;
+      let keptBoth = 0;
+
+      for (const item of incomingProjects) {
+        const projectEntry = zip.file(item.projectPath);
+        if (!projectEntry) throw new Error(`Missing ${item.projectPath}.`);
+        const projectFile = JSON.parse(await projectEntry.async("text"));
+        if (projectFile.format !== "field-measurement-project" || projectFile.version !== 1 || !projectFile.project) {
+          throw new Error(`${item.projectPath} is not a supported project file.`);
+        }
+
+        const source = projectFile.project;
+        source.projectId = projectFile.projectId || source.projectId || source.id;
+        source.updatedAt = Number(projectFile.updatedAt || source.updatedAt) || Date.now();
+
+        let pdfBuffer = null;
+        if (item.pdfPath) {
+          const pdfEntry = zip.file(item.pdfPath);
+          if (!pdfEntry) throw new Error(`Missing ${item.pdfPath}.`);
+          pdfBuffer = await pdfEntry.async("arraybuffer");
+        }
+
+        const latestProjects = await ProjectDB.getAllProjects();
+        const existing = latestProjects.find(project =>
+          (project.projectId || project.id) === source.projectId
+        );
+
+        let mode = "new";
+        if (existing) {
+          mode = await askTransferConflict(existing, source);
+          if (mode === "cancel") throw new Error("Import cancelled by user.");
+        }
+
+        const importedFolderId = item.folderId
+          ? (folderMap.get(item.folderId) || currentFolderId || null)
+          : (currentFolderId || null);
+
+        await ProjectDB.importTransferProject(source, pdfBuffer, {
+          mode,
+          existingId: existing?.id || null,
+          folderId: importedFolderId
+        });
+
+        imported += 1;
+        if (mode === "overwrite") overwritten += 1;
+        if (mode === "keep-both") keptBoth += 1;
+      }
+
+      await refreshLibrary();
+      alert(
+        `Import complete.\n\n${imported} projects imported\n` +
+        `${overwritten} overwritten\n${keptBoth} kept as separate copies`
+      );
+    } catch (error) {
+      if (error?.message === "Import cancelled by user.") return;
+      alert("Project import failed: " + (error?.message || String(error)));
+    }
+  }
+
+  async function importTransferFolders(incomingFolders) {
+    const map = new Map();
+    const remaining = [...incomingFolders];
+    let guard = 0;
+
+    while (remaining.length && guard++ < incomingFolders.length + 5) {
+      let progressed = false;
+      for (let i = remaining.length - 1; i >= 0; i -= 1) {
+        const source = remaining[i];
+        const parentReady = !source.parentId || map.has(source.parentId);
+        if (!parentReady) continue;
+
+        const targetParent = source.parentId
+          ? map.get(source.parentId)
+          : (currentFolderId || null);
+        const existing = (await ProjectDB.getAllFolders()).find(folder =>
+          (folder.parentId || null) === targetParent &&
+          String(folder.name).toLowerCase() === String(source.name).toLowerCase()
+        );
+
+        if (existing) {
+          map.set(source.id, existing.id);
+        } else {
+          const newFolder = {
+            ...source,
+            id: ProjectDB.makeId("folder"),
+            parentId: targetParent,
+            createdAt: Date.now(),
+            updatedAt: Date.now()
+          };
+          await ProjectDB.saveFolder(newFolder);
+          map.set(source.id, newFolder.id);
+        }
+        remaining.splice(i, 1);
+        progressed = true;
+      }
+      if (!progressed) break;
+    }
+    return map;
+  }
+
+  function askTransferConflict(existing, incoming) {
+    return new Promise(resolve => {
+      pendingConflictResolve = resolve;
+      els.transferConflictSummary.textContent =
+        `“${incoming.name || "Unnamed project"}” has the same project ID as a project already on this device.`;
+      els.existingProjectTime.textContent = formatFullDate(existing.updatedAt);
+      els.incomingProjectTime.textContent = formatFullDate(incoming.updatedAt);
+      els.transferConflictModal.classList.remove("hidden");
+    });
+  }
+
+  function resolveTransferConflict(choice) {
+    els.transferConflictModal.classList.add("hidden");
+    const resolve = pendingConflictResolve;
+    pendingConflictResolve = null;
+    if (resolve) resolve(choice);
+  }
+
+  function formatFullDate(value) {
+    if (!value) return "Unknown date";
+    return new Date(value).toLocaleString();
   }
 
   /* ---------- Warning banner, multi-tab detection, storage check ---------- */

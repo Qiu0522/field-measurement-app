@@ -166,6 +166,7 @@ const ProjectDB = (() => {
 
       const record = {
         ...project,
+        projectId: project.projectId || project.id,
         folderId: project.folderId || null,
         updatedAt: now
       };
@@ -235,6 +236,7 @@ const ProjectDB = (() => {
 
     const copy = cloneProject(original);
     copy.id = makeId("project");
+    copy.projectId = copy.id;
     copy.name = original.name + " Copy";
     copy.createdAt = Date.now();
     copy.updatedAt = Date.now();
@@ -561,12 +563,55 @@ const ProjectDB = (() => {
     });
   }
 
+  async function importTransferProject(source, pdfBuffer, options = {}) {
+    if (!source) throw new Error("Missing project data.");
+
+    const mode = options.mode || "new";
+    const now = Date.now();
+    const localId = mode === "overwrite" && options.existingId
+      ? options.existingId
+      : makeId("project");
+    const sourceProjectId = source.projectId || source.id || makeId("project");
+    const projectId = mode === "keep-both" ? localId : sourceProjectId;
+
+    const record = {
+      ...source,
+      id: localId,
+      projectId,
+      folderId: options.folderId || null,
+      createdAt: mode === "overwrite"
+        ? (source.createdAt || now)
+        : now,
+      updatedAt: Number(source.updatedAt) || now
+    };
+
+    delete record.pdfData;
+    delete record._assetSaved;
+    delete record._pdfIsBase64;
+
+    return enqueueWrite(async () => {
+      await runRequest(PROJECTS, "readwrite", store => store.put(record));
+
+      if (pdfBuffer instanceof ArrayBuffer) {
+        await runRequest(ASSETS, "readwrite", store => store.put({
+          projectId: localId,
+          pdfData: pdfBuffer
+        }));
+      } else if (mode === "overwrite") {
+        // A data-only package should not erase an existing local PDF.
+      }
+
+      return record;
+    });
+  }
+
   return {
     open,
     exportAll,
     importAll,
     exportProject,
     importProject,
+    importTransferProject,
     getAllProjects,
     getProject,
     saveProject,

@@ -18,7 +18,7 @@
   cached copies are cleared and every device picks up the new version.
 */
 
-const CACHE_VERSION = "field-measurement-v7-pages-autosort-all-1";
+const CACHE_VERSION = "field-measurement-v7-transfer-package-1";
 const CACHE_NAME = CACHE_VERSION;
 
 // Same-origin app shell, relative to the service worker location.
@@ -33,7 +33,8 @@ const APP_SHELL = [
   "manifest.json",
   "lib/pdf.min.js",
   "lib/pdf.worker.min.js",
-  "lib/html2pdf.bundle.min.js"
+  "lib/html2pdf.bundle.min.js",
+  "lib/jszip.min.js"
 ];
 
 // Libraries are now hosted locally in /lib, so there are no cross-origin assets.

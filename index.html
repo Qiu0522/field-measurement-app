@@ -48,13 +48,25 @@
           ⬆ Restore
         </button>
 
+        <button id="selectProjectsBtn" class="secondaryButton largeButton" type="button">
+          ✓ Select
+        </button>
+
+        <button id="exportProjectsBtn" class="primaryButton largeButton hidden" type="button">
+          ⇧ Export Project
+        </button>
+
+        <button id="cancelSelectionBtn" class="secondaryButton largeButton hidden" type="button">
+          Cancel Selection
+        </button>
+
         <button id="importFileBtn" class="secondaryButton largeButton" type="button">
-          ＋ Import File
+          ＋ Import Project
         </button>
       </div>
     </header>
 
-    <input id="importFileInput" type="file" accept=".json,application/json" class="hidden">
+    <input id="importFileInput" type="file" accept=".json,.zip,application/json,application/zip" class="hidden">
 
     <div class="libraryNavigation">
       <button id="upFolderBtn" class="toolbarButton" type="button" disabled>← Back</button>
@@ -204,6 +216,39 @@
     <button id="duplicateLibraryAction" type="button">Duplicate</button>
     <button id="exportFileAction" type="button">Export File</button>
     <button id="deleteLibraryAction" class="dangerText" type="button">Delete</button>
+  </div>
+
+
+  <div id="transferExportModal" class="modalBackdrop hidden">
+    <div class="modalCard">
+      <h2>Export Projects</h2>
+      <p id="transferExportSummary" class="mutedText"></p>
+      <label class="checkChoice">
+        <input id="includePdfCheckbox" type="checkbox" checked>
+        <span>Include original PDF files (recommended)</span>
+      </label>
+      <p class="mutedText">Turn this off for a smaller data-only package. The receiving computer will need the original PDFs separately.</p>
+      <div class="modalActions">
+        <button id="cancelTransferExportBtn" type="button">Cancel</button>
+        <button id="confirmTransferExportBtn" class="primaryButton" type="button">Export ZIP</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="transferConflictModal" class="modalBackdrop hidden">
+    <div class="modalCard">
+      <h2>Project already exists</h2>
+      <p id="transferConflictSummary" class="restoreSummary"></p>
+      <div class="conflictTimes">
+        <div><strong>On this computer</strong><span id="existingProjectTime"></span></div>
+        <div><strong>Incoming file</strong><span id="incomingProjectTime"></span></div>
+      </div>
+      <div class="modalActions stackedActions">
+        <button id="keepBothConflictBtn" type="button">Keep Both</button>
+        <button id="overwriteConflictBtn" class="primaryButton" type="button">Overwrite</button>
+        <button id="cancelConflictBtn" class="dangerButton" type="button">Cancel Import</button>
+      </div>
+    </div>
   </div>
 
   <div id="renameModal" class="modalBackdrop hidden">
@@ -527,6 +572,7 @@
   </div>
 
   <!-- Script order matters -->
+  <script src="lib/jszip.min.js"></script>
   <script src="db.js"></script>
   <script src="save.js"></script>
   <script src="workspace.js"></script>
