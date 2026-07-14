@@ -47,8 +47,14 @@
         <button id="restoreBtn" class="secondaryButton largeButton" type="button">
           ⬆ Restore
         </button>
+
+        <button id="importFileBtn" class="secondaryButton largeButton" type="button">
+          ＋ Import File
+        </button>
       </div>
     </header>
+
+    <input id="importFileInput" type="file" accept=".json,application/json" class="hidden">
 
     <div class="libraryNavigation">
       <button id="upFolderBtn" class="toolbarButton" type="button" disabled>← Back</button>
@@ -196,6 +202,7 @@
   <div id="libraryContextMenu" class="popupMenu hidden">
     <button id="renameLibraryAction" type="button">Rename</button>
     <button id="duplicateLibraryAction" type="button">Duplicate</button>
+    <button id="exportFileAction" type="button">Export File</button>
     <button id="deleteLibraryAction" class="dangerText" type="button">Delete</button>
   </div>
 

@@ -49,6 +49,9 @@ const App = (() => {
     els.renameLibraryAction = document.getElementById("renameLibraryAction");
     els.duplicateLibraryAction = document.getElementById("duplicateLibraryAction");
     els.deleteLibraryAction = document.getElementById("deleteLibraryAction");
+    els.exportFileAction = document.getElementById("exportFileAction");
+    els.importFileBtn = document.getElementById("importFileBtn");
+    els.importFileInput = document.getElementById("importFileInput");
     els.backupStatus = document.getElementById("backupStatus");
     els.renameModal = document.getElementById("renameModal");
     els.renameModalTitle = document.getElementById("renameModalTitle");
@@ -142,6 +145,14 @@ const App = (() => {
     els.renameLibraryAction.addEventListener("click", renameSelectedItem);
     els.duplicateLibraryAction.addEventListener("click", duplicateSelectedItem);
     els.deleteLibraryAction.addEventListener("click", deleteSelectedItem);
+
+    els.exportFileAction.addEventListener("click", exportSelectedFile);
+
+    els.importFileBtn.addEventListener("click", () => {
+      els.importFileInput.value = "";
+      els.importFileInput.click();
+    });
+    els.importFileInput.addEventListener("change", handleImportFile);
 
     els.cancelRenameBtn.addEventListener("click", () => {
       pendingRename = null;
@@ -278,9 +289,7 @@ const App = (() => {
       `${pointCount} points · Updated ${formatDate(project.updatedAt)}`;
 
     openArea.append(preview, title, meta, updated);
-    openArea.addEventListener("click", () => {
-      openProject(project.id);
-    });
+    openArea.addEventListener("click", () => openProject(project.id));
 
     const menuButton = makeMenuButton({
       type: "project",
@@ -307,12 +316,17 @@ const App = (() => {
         item.type === "folder"
       );
 
+      els.exportFileAction.classList.toggle(
+        "hidden",
+        item.type === "folder"
+      );
+
       positionMenu(
         els.libraryContextMenu,
         event.clientX,
         event.clientY,
         200,
-        item.type === "folder" ? 100 : 110
+        item.type === "folder" ? 100 : 145
       );
     });
 
@@ -475,9 +489,8 @@ const App = (() => {
 
     const now = Date.now();
 
-    const newProjectId = ProjectDB.makeId("project");
     const project = {
-      id: newProjectId,
+      id: ProjectDB.makeId("project"),
       name,
       folderId: currentFolderId,
       kind: pendingProjectKind,
@@ -604,6 +617,54 @@ const App = (() => {
     els.renameModal.classList.add("hidden");
   }
 
+  async function exportSelectedFile() {
+    hideMenus();
+
+    if (!currentMenuItem || currentMenuItem.type !== "project") {
+      alert("Only work files can be exported to a single file. For folders, use Backup.");
+      return;
+    }
+
+    try {
+      const project = projects.find(item => item.id === currentMenuItem.id);
+      const data = await ProjectDB.exportProject(currentMenuItem.id);
+      const safeName = (project?.name || "file").replace(/[^\w\-]+/g, "_");
+
+      downloadBlob(
+        new Blob([JSON.stringify(data)], { type: "application/json" }),
+        `${safeName}.fmfile.json`
+      );
+    } catch (error) {
+      alert("Export failed: " + explainDbError(error));
+    }
+  }
+
+  async function handleImportFile(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    let data;
+    try {
+      data = JSON.parse(await file.text());
+    } catch (error) {
+      alert("That file could not be read.");
+      return;
+    }
+
+    if (!data || data.format !== "field-measurement-file") {
+      alert("That is not a single-file export. For a whole-library backup file, use Restore instead.");
+      return;
+    }
+
+    try {
+      const record = await ProjectDB.importProject(data, currentFolderId);
+      await refreshLibrary();
+      alert(`Imported "${record.name}" into this folder.`);
+    } catch (error) {
+      alert("Import failed: " + explainDbError(error));
+    }
+  }
+
   function updateBackupStatus() {
     if (!els.backupStatus) return;
 
@@ -680,15 +741,11 @@ const App = (() => {
       try { localStorage.setItem("fm_lastBackupAt", String(Date.now())); } catch (_) {}
       updateBackupStatus();
 
-      const foldersCount = Array.isArray(backup.folders) ? backup.folders.length : 0;
-      const projectsCount = Array.isArray(backup.projects) ? backup.projects.length : 0;
-      const assetsCount = Array.isArray(backup.assets) ? backup.assets.length : 0;
-
       alert(
         "Backup saved.\n\n" +
-        `${foldersCount} folders\n` +
-        `${projectsCount} work files\n` +
-        `${assetsCount} PDF drawings\n\n` +
+        `${backup.counts.folders} folders\n` +
+        `${backup.counts.projects} work files\n` +
+        `${backup.counts.assets} PDF drawings\n\n` +
         "Keep this file somewhere safe: email it to yourself, or save it to a " +
         "cloud drive or another device."
       );
@@ -712,27 +769,26 @@ const App = (() => {
       return;
     }
 
-    const normalized = ProjectDB.normalizeBackup
-      ? ProjectDB.normalizeBackup(backup)
-      : backup;
-
-    if (!normalized) {
+    if (!backup || backup.format !== "field-measurement-backup" || !backup.data) {
       alert("That file is not a Field Measurement backup.");
       return;
     }
 
-    pendingBackup = normalized;
-    openRestoreModal(normalized);
+    pendingBackup = backup;
+    openRestoreModal(backup);
   }
 
   function openRestoreModal(backup) {
-    const foldersCount = Array.isArray(backup.folders) ? backup.folders.length : 0;
-    const projectsCount = Array.isArray(backup.projects) ? backup.projects.length : 0;
-    const assetsCount = Array.isArray(backup.assets) ? backup.assets.length : 0;
+    const counts = backup.counts || {};
+
+    const made = backup.exportedAt
+      ? new Date(backup.exportedAt).toLocaleString()
+      : "an unknown date";
 
     els.restoreSummary.textContent =
-      `This backup contains ${foldersCount} folders, ${projectsCount} work files, ` +
-      `and ${assetsCount} PDF drawings.`;
+      `This backup was made ${made} and contains ` +
+      `${counts.folders ?? "?"} folders, ${counts.projects ?? "?"} work files, ` +
+      `and ${counts.assets ?? "?"} PDF drawings.`;
 
     disarmReplace();
     els.restoreModal.classList.remove("hidden");
