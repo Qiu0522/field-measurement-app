@@ -80,6 +80,16 @@ const Workspace = (() => {
   let pageThumbnailObserver = null;
   let pageThumbnailRenderToken = 0;
   let switchingPage = false;
+  let activePdfRenderTask = null;
+  const thumbnailRenderTasks = new Set();
+
+  // Keep the original scale-5 coordinate system so existing points and markup
+  // stay in the correct locations, but render the PDF backing canvas at a
+  // smaller adaptive resolution. This is much faster on iPad and avoids huge
+  // canvas allocations while the CSS size remains unchanged.
+  const PDF_LOGICAL_SCALE = 5;
+  const PDF_MAX_RENDER_PIXELS = 10_000_000;
+  const PDF_MAX_RENDER_DIMENSION = 4096;
 
   let undoStack = [];
   let redoStack = [];
@@ -734,24 +744,71 @@ const Workspace = (() => {
     SaveController.markSaved();
   }
 
+  function getAdaptivePdfRenderQuality(viewport) {
+    const width = Math.max(1, viewport.width);
+    const height = Math.max(1, viewport.height);
+    const pixelScale = Math.sqrt(PDF_MAX_RENDER_PIXELS / (width * height));
+    const dimensionScale = Math.min(
+      PDF_MAX_RENDER_DIMENSION / width,
+      PDF_MAX_RENDER_DIMENSION / height
+    );
+
+    // Desktop can use a little more detail; iPad benefits from the lower cap.
+    const deviceCap = /iPad|iPhone|iPod/.test(navigator.userAgent) ? 0.48 : 0.65;
+    return Math.max(0.25, Math.min(1, deviceCap, pixelScale, dimensionScale));
+  }
+
   async function renderStoredPdf(pdfData, pageNumber = 1) {
     if (!pdfData) throw new Error("This project has no stored PDF.");
     if (!pdfDocument) {
       pdfDocument = await pdfjsLib.getDocument(new Uint8Array(pdfData)).promise;
       totalPdfPages = pdfDocument.numPages || 1;
     }
+
     currentPdfPage = Math.min(Math.max(1, Number(pageNumber) || 1), totalPdfPages);
     const page = await pdfDocument.getPage(currentPdfPage);
-    const viewport = page.getViewport({ scale: 5 });
-    const context = els.pdfCanvas.getContext("2d");
-    els.pdfCanvas.width = Math.round(viewport.width);
-    els.pdfCanvas.height = Math.round(viewport.height);
-    els.drawingArea.style.width = els.pdfCanvas.width + "px";
-    els.drawingArea.style.height = els.pdfCanvas.height + "px";
+    const logicalViewport = page.getViewport({ scale: PDF_LOGICAL_SCALE });
+    const renderQuality = getAdaptivePdfRenderQuality(logicalViewport);
+    const backingWidth = Math.max(1, Math.round(logicalViewport.width * renderQuality));
+    const backingHeight = Math.max(1, Math.round(logicalViewport.height * renderQuality));
+    const logicalWidth = Math.round(logicalViewport.width);
+    const logicalHeight = Math.round(logicalViewport.height);
+
+    if (activePdfRenderTask) {
+      try { activePdfRenderTask.cancel(); } catch (_) {}
+      activePdfRenderTask = null;
+    }
+
+    const context = els.pdfCanvas.getContext("2d", { alpha: false });
+    els.pdfCanvas.width = backingWidth;
+    els.pdfCanvas.height = backingHeight;
+    els.pdfCanvas.style.width = logicalWidth + "px";
+    els.pdfCanvas.style.height = logicalHeight + "px";
+    els.pdfCanvas.dataset.logicalWidth = String(logicalWidth);
+    els.pdfCanvas.dataset.logicalHeight = String(logicalHeight);
+    els.drawingArea.style.width = logicalWidth + "px";
+    els.drawingArea.style.height = logicalHeight + "px";
     els.drawingImage.classList.add("hidden");
     els.pdfCanvas.classList.remove("hidden");
-    await page.render({ canvasContext: context, viewport }).promise;
-    setupCommentCanvas(els.pdfCanvas.width, els.pdfCanvas.height);
+
+    activePdfRenderTask = page.render({
+      canvasContext: context,
+      viewport: logicalViewport,
+      transform: renderQuality === 1
+        ? null
+        : [renderQuality, 0, 0, renderQuality, 0, 0]
+    });
+
+    try {
+      await activePdfRenderTask.promise;
+    } catch (error) {
+      if (error?.name !== "RenderingCancelledException") throw error;
+    } finally {
+      activePdfRenderTask = null;
+    }
+
+    // Markup and point coordinates keep using the original logical dimensions.
+    setupCommentCanvas(logicalWidth, logicalHeight);
     updatePageDisplay();
   }
 
@@ -773,25 +830,50 @@ const Workspace = (() => {
     if (!project || project.kind !== "pdf" || switchingPage) return;
     const target = Math.min(Math.max(1, Number(pageNumber) || 1), totalPdfPages);
     if (target === currentPdfPage) { closePageModal(); return; }
+
     switchingPage = true;
+    captureCurrentPageState();
+    closePageModal();
+    setStatus(`Loading page ${target} of ${totalPdfPages}…`);
+
+    // Let the sidebar close and the loading text paint before PDF.js starts.
+    await new Promise(resolve => requestAnimationFrame(() => resolve()));
+
     try {
-      captureCurrentPageState();
-      removeAllPointElements(); removeAllTextNoteElements();
+      removeAllPointElements();
+      removeAllTextNoteElements();
       els.commentCanvas.getContext("2d").clearRect(0, 0, els.commentCanvas.width, els.commentCanvas.height);
       currentPdfPage = target;
+
       const state = pageStates[target] || emptyPageState();
-      points = clone(state.points || []); dataTypes = clone(state.dataTypes || DEFAULT_DATA_TYPES);
-      textNotes = clone(state.textNotes || []); commentImageData = state.commentImageData || "";
+      points = clone(state.points || []);
+      dataTypes = clone(state.dataTypes || DEFAULT_DATA_TYPES);
+      textNotes = clone(state.textNotes || []);
+      commentImageData = state.commentImageData || "";
       dataTypes.forEach(dt => { if (!Array.isArray(dt.lockedSides)) dt.lockedSides = []; });
+
       await renderStoredPdf(project.pdfData, target);
       renderDataSelect(state.selectedDataId);
-      points.forEach(createPointElement); textNotes.forEach(createTextNoteElement);
+      points.forEach(createPointElement);
+      textNotes.forEach(createTextNoteElement);
       if (commentImageData) await restoreCommentImage(commentImageData);
-      applyZoom(); applyLabelFontSize();
-      els.drawingWrapper.scrollLeft = state.scrollLeft || 0; els.drawingWrapper.scrollTop = state.scrollTop || 0;
-      undoStack = []; redoStack = []; updateUndoRedoButtons(); updateNoSideBanner();
-      closePageModal(); scheduleAutoSave(); setStatus(`Page ${currentPdfPage} of ${totalPdfPages}.`);
-    } finally { switchingPage = false; }
+      applyZoom();
+      applyLabelFontSize();
+      els.drawingWrapper.scrollLeft = state.scrollLeft || 0;
+      els.drawingWrapper.scrollTop = state.scrollTop || 0;
+      undoStack = [];
+      redoStack = [];
+      updateUndoRedoButtons();
+      updateNoSideBanner();
+      scheduleAutoSave();
+      setStatus(`Page ${currentPdfPage} of ${totalPdfPages}.`);
+    } catch (error) {
+      console.error("Page change failed:", error);
+      setStatus(`Could not open page ${target}.`);
+      alert("Could not open this PDF page. Please try again.");
+    } finally {
+      switchingPage = false;
+    }
   }
 
   function updatePageDisplay() {
@@ -813,8 +895,14 @@ const Workspace = (() => {
       canvas.width = Math.max(1, Math.round(viewport.width));
       canvas.height = Math.max(1, Math.round(viewport.height));
       const context = canvas.getContext("2d", { alpha: false });
-      await page.render({ canvasContext: context, viewport }).promise;
-      if (token === pageThumbnailRenderToken) canvas.dataset.rendered = "true";
+      const renderTask = page.render({ canvasContext: context, viewport });
+      thumbnailRenderTasks.add(renderTask);
+      try {
+        await renderTask.promise;
+        if (token === pageThumbnailRenderToken) canvas.dataset.rendered = "true";
+      } finally {
+        thumbnailRenderTasks.delete(renderTask);
+      }
     } catch (error) {
       console.warn(`Could not render thumbnail for page ${pageNumber}:`, error);
       canvas.classList.add("thumbnailError");
@@ -889,6 +977,10 @@ const Workspace = (() => {
       pageThumbnailObserver = null;
     }
     pageThumbnailRenderToken += 1;
+    thumbnailRenderTasks.forEach(task => {
+      try { task.cancel(); } catch (_) {}
+    });
+    thumbnailRenderTasks.clear();
     if (els.pageModal) els.pageModal.classList.add("hidden");
   }
 
@@ -3198,12 +3290,12 @@ const Workspace = (() => {
     try {
       const sourceWidth =
         project?.kind === "pdf"
-          ? els.pdfCanvas.width
+          ? Number(els.pdfCanvas.dataset.logicalWidth || els.drawingArea.offsetWidth)
           : Number(project?.blankWidth || els.drawingArea.offsetWidth);
 
       const sourceHeight =
         project?.kind === "pdf"
-          ? els.pdfCanvas.height
+          ? Number(els.pdfCanvas.dataset.logicalHeight || els.drawingArea.offsetHeight)
           : Number(project?.blankHeight || els.drawingArea.offsetHeight);
 
       if (!sourceWidth || !sourceHeight) {
@@ -3242,7 +3334,7 @@ const Workspace = (() => {
       context.scale(exportScale, exportScale);
 
       if (project?.kind === "pdf") {
-        context.drawImage(els.pdfCanvas, 0, 0);
+        context.drawImage(els.pdfCanvas, 0, 0, sourceWidth, sourceHeight);
       } else if (
         els.drawingImage &&
         !els.drawingImage.classList.contains("hidden") &&
