@@ -1044,13 +1044,18 @@ button {
 }
 
 .v6MainGrid .operatorButton {
-  background: #f1f2f4;
+  background: #e7edf4;
+  border-color: #9aa9b8;
+  color: #33485c;
+}
+
+.v6MainGrid .operatorButton:active {
+  background: #d5dee8;
 }
 
 .v6Keypad .spaceButton {
   width: 100%;
   min-height: 60px !important;
-  margin-top: 10px;
   border: 1px solid #7ba7d5;
   border-radius: 10px;
   background: #dceeff;
@@ -1058,6 +1063,10 @@ button {
   font-size: 20px !important;
   font-weight: 750;
   letter-spacing: 2px;
+}
+
+.v6MainGrid .gridSpaceButton {
+  grid-column: 1 / -1;
 }
 .measurementUtilityRow { display:grid; grid-template-columns:minmax(0,1fr) 64px; gap:10px; align-items:stretch; }
 .measurementUtilityRow .spaceButton { margin-top:10px; }
@@ -1099,9 +1108,9 @@ button {
 }
 
 .v6Keypad .measurementActions button {
-  min-height: 58px;
-  border-radius: 10px;
-  font-size: 20px;
+  min-height: 70px;
+  border-radius: 11px;
+  font-size: 22px;
   font-weight: 700;
 }
 
