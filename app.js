@@ -13,6 +13,8 @@ const App = (() => {
 
   let pendingBackup = null;
   let replaceArmed = false;
+  let fileSelectionMode = false;
+  const selectedProjectIds = new Set();
 
   const els = {};
 
@@ -53,6 +55,13 @@ const App = (() => {
     els.importFileBtn = document.getElementById("importFileBtn");
     els.importFileInput = document.getElementById("importFileInput");
     els.backupStatus = document.getElementById("backupStatus");
+    els.selectFilesBtn = document.getElementById("selectFilesBtn");
+    els.selectionBar = document.getElementById("selectionBar");
+    els.selectionCount = document.getElementById("selectionCount");
+    els.selectAllFilesBtn = document.getElementById("selectAllFilesBtn");
+    els.exportSelectedFilesBtn = document.getElementById("exportSelectedFilesBtn");
+    els.backupSelectedFilesBtn = document.getElementById("backupSelectedFilesBtn");
+    els.cancelFileSelectionBtn = document.getElementById("cancelFileSelectionBtn");
     els.renameModal = document.getElementById("renameModal");
     els.renameModalTitle = document.getElementById("renameModalTitle");
     els.renameInput = document.getElementById("renameInput");
@@ -153,6 +162,11 @@ const App = (() => {
       els.importFileInput.click();
     });
     els.importFileInput.addEventListener("change", handleImportFile);
+    els.selectFilesBtn.addEventListener("click", startFileSelection);
+    els.cancelFileSelectionBtn.addEventListener("click", stopFileSelection);
+    els.selectAllFilesBtn.addEventListener("click", selectAllVisibleFiles);
+    els.exportSelectedFilesBtn.addEventListener("click", exportSelectedFiles);
+    els.backupSelectedFilesBtn.addEventListener("click", backupSelectedFiles);
 
     els.cancelRenameBtn.addEventListener("click", () => {
       pendingRename = null;
@@ -289,15 +303,107 @@ const App = (() => {
       `${pointCount} points · Updated ${formatDate(project.updatedAt)}`;
 
     openArea.append(preview, title, meta, updated);
-    openArea.addEventListener("click", () => openProject(project.id));
+    openArea.addEventListener("click", () => {
+      if (fileSelectionMode) toggleProjectSelection(project.id);
+      else openProject(project.id);
+    });
+
+    const selector = document.createElement("button");
+    selector.type = "button";
+    selector.className = "fileSelector";
+    selector.setAttribute("aria-label", `Select ${project.name}`);
+    selector.textContent = selectedProjectIds.has(project.id) ? "✓" : "";
+    selector.classList.toggle("selected", selectedProjectIds.has(project.id));
+    selector.addEventListener("click", event => {
+      event.stopPropagation();
+      toggleProjectSelection(project.id);
+    });
 
     const menuButton = makeMenuButton({
       type: "project",
       id: project.id
     });
 
-    card.append(openArea, menuButton);
+    card.classList.toggle("selectionMode", fileSelectionMode);
+    card.classList.toggle("selectedFile", selectedProjectIds.has(project.id));
+    card.append(openArea, selector, menuButton);
     return card;
+  }
+
+  function startFileSelection() {
+    fileSelectionMode = true;
+    selectedProjectIds.clear();
+    els.selectionBar.classList.remove("hidden");
+    els.selectFilesBtn.classList.add("hidden");
+    updateFileSelectionUI();
+    renderLibrary();
+  }
+
+  function stopFileSelection() {
+    fileSelectionMode = false;
+    selectedProjectIds.clear();
+    els.selectionBar.classList.add("hidden");
+    els.selectFilesBtn.classList.remove("hidden");
+    renderLibrary();
+  }
+
+  function toggleProjectSelection(id) {
+    if (!fileSelectionMode) fileSelectionMode = true;
+    if (selectedProjectIds.has(id)) selectedProjectIds.delete(id);
+    else selectedProjectIds.add(id);
+    updateFileSelectionUI();
+    renderLibrary();
+  }
+
+  function visibleProjectIds() {
+    const search = els.projectSearch.value.trim().toLowerCase();
+    return projects
+      .filter(project => (project.folderId || null) === currentFolderId)
+      .filter(project => !search || project.name.toLowerCase().includes(search))
+      .map(project => project.id);
+  }
+
+  function selectAllVisibleFiles() {
+    const visible = visibleProjectIds();
+    const allSelected = visible.length > 0 && visible.every(id => selectedProjectIds.has(id));
+    visible.forEach(id => allSelected ? selectedProjectIds.delete(id) : selectedProjectIds.add(id));
+    updateFileSelectionUI();
+    renderLibrary();
+  }
+
+  function updateFileSelectionUI() {
+    const count = selectedProjectIds.size;
+    els.selectionCount.textContent = `${count} file${count === 1 ? "" : "s"} selected`;
+    els.exportSelectedFilesBtn.disabled = count === 0;
+    els.backupSelectedFilesBtn.disabled = count === 0;
+    const visible = visibleProjectIds();
+    els.selectAllFilesBtn.textContent = visible.length && visible.every(id => selectedProjectIds.has(id))
+      ? "Clear All" : "Select All";
+  }
+
+  async function exportSelectedFiles() {
+    if (!selectedProjectIds.size) return;
+    try {
+      const bundle = await ProjectDB.exportProjectBundle([...selectedProjectIds]);
+      const stamp = new Date().toISOString().slice(0, 10);
+      downloadBlob(new Blob([JSON.stringify(bundle)], { type: "application/json" }),
+        `field-measurement-files-${stamp}.fmfiles.json`);
+    } catch (error) {
+      alert("Export failed: " + explainDbError(error));
+    }
+  }
+
+  async function backupSelectedFiles() {
+    if (!selectedProjectIds.size) return;
+    try {
+      const backup = await ProjectDB.exportSelected([...selectedProjectIds]);
+      const stamp = new Date().toISOString().slice(0, 10);
+      downloadBlob(new Blob([JSON.stringify(backup)], { type: "application/json" }),
+        `field-measurement-selected-backup-${stamp}.json`);
+      alert(`Backup saved with ${backup.counts.projects} selected file${backup.counts.projects === 1 ? "" : "s"}.`);
+    } catch (error) {
+      alert("Backup failed: " + explainDbError(error));
+    }
   }
 
   function makeMenuButton(item) {
@@ -651,15 +757,22 @@ const App = (() => {
       return;
     }
 
-    if (!data || data.format !== "field-measurement-file") {
+    if (!data || !["field-measurement-file", "field-measurement-files"].includes(data.format)) {
       alert("That is not a single-file export. For a whole-library backup file, use Restore instead.");
       return;
     }
 
     try {
-      const record = await ProjectDB.importProject(data, currentFolderId);
+      const files = data.format === "field-measurement-files" && Array.isArray(data.files)
+        ? data.files : [data];
+      const imported = [];
+      for (const fileData of files) {
+        imported.push(await ProjectDB.importProject(fileData, currentFolderId));
+      }
       await refreshLibrary();
-      alert(`Imported "${record.name}" into this folder.`);
+      alert(imported.length === 1
+        ? `Imported "${imported[0].name}" into this folder.`
+        : `Imported ${imported.length} work files into this folder.`);
     } catch (error) {
       alert("Import failed: " + explainDbError(error));
     }

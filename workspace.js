@@ -405,7 +405,7 @@ const Workspace = (() => {
     });
 
     els.zoomDisplay.addEventListener("click", () => resetZoom());
-    els.fitBtn.addEventListener("click", fitDrawing);
+    if (els.fitBtn) els.fitBtn.addEventListener("click", fitDrawing);
     els.pageBtn.addEventListener("click", openPageModal);
     els.closePageModalBtn.addEventListener("click", closePageModal);
 

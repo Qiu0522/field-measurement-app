@@ -417,6 +417,53 @@ const ProjectDB = (() => {
     };
   }
 
+  async function exportSelected(projectIds) {
+    const wanted = new Set(Array.isArray(projectIds) ? projectIds : []);
+    const allProjects = await runRequest(PROJECTS, "readonly", store => store.getAll());
+    const allAssets = await runRequest(ASSETS, "readonly", store => store.getAll());
+    const selectedProjects = (allProjects || []).filter(project => wanted.has(project.id));
+    const selectedAssets = (allAssets || []).filter(asset => wanted.has(asset.projectId));
+
+    const safeProjects = selectedProjects.map(project => {
+      const copy = { ...project };
+      if (copy.pdfData instanceof ArrayBuffer) {
+        copy.pdfData = arrayBufferToBase64(copy.pdfData);
+        copy._pdfIsBase64 = true;
+      } else {
+        delete copy.pdfData;
+      }
+      delete copy._assetSaved;
+      return copy;
+    });
+
+    const safeAssets = selectedAssets.map(asset => ({
+      projectId: asset.projectId,
+      pdfData: asset.pdfData instanceof ArrayBuffer
+        ? arrayBufferToBase64(asset.pdfData)
+        : null
+    }));
+
+    return {
+      format: "field-measurement-backup",
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      selectionOnly: true,
+      counts: { folders: 0, projects: safeProjects.length, assets: safeAssets.length },
+      data: { folders: [], projects: safeProjects, assets: safeAssets }
+    };
+  }
+
+  async function exportProjectBundle(projectIds) {
+    const files = [];
+    for (const id of projectIds || []) files.push(await exportProject(id));
+    return {
+      format: "field-measurement-files",
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      files
+    };
+  }
+
   /*
     Restore a backup object produced by exportAll().
     - mode "merge"   : add or overwrite items that share an id, keep the rest.
@@ -564,6 +611,8 @@ const ProjectDB = (() => {
   return {
     open,
     exportAll,
+    exportSelected,
+    exportProjectBundle,
     importAll,
     exportProject,
     importProject,

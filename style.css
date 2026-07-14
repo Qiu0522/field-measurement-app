@@ -106,6 +106,41 @@ button {
   flex: 1;
 }
 
+.selectionBar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 1400px;
+  margin: -8px auto 18px;
+  padding: 12px 14px;
+  border: 1px solid #b9cee5;
+  border-radius: 10px;
+  background: #eaf3fc;
+}
+
+.selectionBar strong { margin-right: auto; }
+.selectionBar button { min-height: 38px; padding: 7px 12px; }
+
+.fileSelector {
+  display: none;
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  width: 34px;
+  height: 34px;
+  z-index: 3;
+  border: 2px solid #7890a8;
+  border-radius: 50%;
+  background: white;
+  color: white;
+  font-weight: 800;
+}
+
+.selectionMode .fileSelector { display: block; }
+.fileSelector.selected { background: var(--primary); border-color: var(--primary); }
+.libraryCard.selectedFile { border: 2px solid var(--primary); background: #f1f7fd; }
+.libraryCard.selectionMode .cardMenuButton { display: none; }
+
 .libraryGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(245px, 1fr));
