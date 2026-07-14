@@ -1826,24 +1826,23 @@ button {
 .v6Keypad .measurementActions {
   grid-column: 2;
   display: grid;
-  grid-template-rows: repeat(4, minmax(58px, auto));
+  grid-template-rows: 1fr 1fr;
   gap: 8px;
-  align-self: start;
+  align-self: stretch;
   margin-top: 0;
 }
 
 .v6Keypad .measurementActions button {
   width: 100%;
+  height: 100%;
   min-height: 0;
   padding: 8px 10px;
   border-radius: 9px;
-  font-size: 17px;
+  font-size: 20px;
   font-weight: 700;
-}
-
-.v6Keypad #cancelMeasurementBtn,
-.v6Keypad .confirmMeasurementButton {
-  grid-row: span 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Lighter numerals make the large keypad easier to scan. */
@@ -1880,7 +1879,7 @@ button {
     font-size: 15px;
   }
   .v6Keypad .measurementActions {
-    grid-template-rows: repeat(4, minmax(52px, auto));
+    grid-template-rows: 1fr 1fr;
     gap: 6px;
   }
 }
