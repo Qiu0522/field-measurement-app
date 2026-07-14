@@ -1800,7 +1800,7 @@ button {
   grid-column: 1;
   display: grid;
   grid-template-columns: repeat(3, minmax(68px, 1fr)) minmax(92px, 0.9fr) minmax(76px, 0.72fr);
-  grid-template-rows: repeat(4, minmax(58px, auto));
+  grid-template-rows: repeat(5, minmax(58px, auto));
   gap: 8px;
 }
 
@@ -1809,11 +1809,11 @@ button {
 }
 
 .v6MainGrid .tallDelete {
-  grid-row: auto;
+  grid-row: span 2;
 }
 
 .v6MainGrid .gridSpaceButton {
-  grid-column: auto;
+  grid-column: 1 / 4;
   min-height: 58px !important;
   margin: 0;
   letter-spacing: 1px;
@@ -1825,20 +1825,39 @@ button {
 
 .v6Keypad .measurementActions {
   grid-column: 2;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 10px;
+  display: grid;
+  grid-template-rows: repeat(4, minmax(58px, auto));
+  gap: 8px;
+  align-self: start;
   margin-top: 0;
 }
 
 .v6Keypad .measurementActions button {
   width: 100%;
-  min-height: 52px;
+  min-height: 0;
   padding: 8px 10px;
   border-radius: 9px;
   font-size: 17px;
   font-weight: 700;
+}
+
+.v6Keypad #cancelMeasurementBtn,
+.v6Keypad .confirmMeasurementButton {
+  grid-row: span 2;
+}
+
+/* Lighter numerals make the large keypad easier to scan. */
+.v6MainGrid button[data-key="0"],
+.v6MainGrid button[data-key="1"],
+.v6MainGrid button[data-key="2"],
+.v6MainGrid button[data-key="3"],
+.v6MainGrid button[data-key="4"],
+.v6MainGrid button[data-key="5"],
+.v6MainGrid button[data-key="6"],
+.v6MainGrid button[data-key="7"],
+.v6MainGrid button[data-key="8"],
+.v6MainGrid button[data-key="9"] {
+  font-weight: 550;
 }
 
 @media (max-width: 760px) {
@@ -1858,7 +1877,10 @@ button {
     font-size: 21px;
   }
   .v6Keypad .measurementActions button {
-    min-height: 48px;
     font-size: 15px;
+  }
+  .v6Keypad .measurementActions {
+    grid-template-rows: repeat(4, minmax(52px, auto));
+    gap: 6px;
   }
 }
