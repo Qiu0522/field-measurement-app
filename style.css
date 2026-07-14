@@ -1826,6 +1826,7 @@ button {
 .v6Keypad .measurementActions {
   grid-column: 2;
   display: grid;
+  grid-template-columns: 1fr;
   grid-template-rows: 1fr 1fr;
   gap: 8px;
   align-self: stretch;
