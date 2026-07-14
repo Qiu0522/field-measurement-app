@@ -166,7 +166,6 @@ const ProjectDB = (() => {
 
       const record = {
         ...project,
-        projectId: project.projectId || project.id,
         folderId: project.folderId || null,
         updatedAt: now
       };
@@ -236,7 +235,6 @@ const ProjectDB = (() => {
 
     const copy = cloneProject(original);
     copy.id = makeId("project");
-    copy.projectId = copy.id;
     copy.name = original.name + " Copy";
     copy.createdAt = Date.now();
     copy.updatedAt = Date.now();
@@ -403,19 +401,9 @@ const ProjectDB = (() => {
     }));
 
     return {
-      format: "field-measurement-backup",
-      version: 1,
-      exportedAt: new Date().toISOString(),
-      counts: {
-        folders: (folders || []).length,
-        projects: safeProjects.length,
-        assets: safeAssets.length
-      },
-      data: {
-        folders: folders || [],
-        projects: safeProjects,
-        assets: safeAssets
-      }
+      folders: folders || [],
+      projects: safeProjects,
+      assets: safeAssets
     };
   }
 
@@ -426,16 +414,46 @@ const ProjectDB = (() => {
     All writes run inside a single transaction so a failure leaves the
     database unchanged.
   */
+  function normalizeBackup(backup) {
+    if (!backup || typeof backup !== "object") return null;
+
+    // Current simple Backup / Restore file.
+    if (Array.isArray(backup.folders) &&
+        Array.isArray(backup.projects) &&
+        Array.isArray(backup.assets)) {
+      return {
+        folders: backup.folders,
+        projects: backup.projects,
+        assets: backup.assets
+      };
+    }
+
+    // Continue accepting backups made by earlier versions of the app.
+    if (backup.data &&
+        Array.isArray(backup.data.folders) &&
+        Array.isArray(backup.data.projects) &&
+        Array.isArray(backup.data.assets)) {
+      return {
+        folders: backup.data.folders,
+        projects: backup.data.projects,
+        assets: backup.data.assets
+      };
+    }
+
+    return null;
+  }
+
   async function importAll(backup, options = {}) {
     const mode = options.mode === "replace" ? "replace" : "merge";
+    const normalized = normalizeBackup(backup);
 
-    if (!backup || backup.format !== "field-measurement-backup" || !backup.data) {
+    if (!normalized) {
       throw new Error("This file is not a Field Measurement backup.");
     }
 
-    const folders = Array.isArray(backup.data.folders) ? backup.data.folders : [];
-    const projects = Array.isArray(backup.data.projects) ? backup.data.projects : [];
-    const assets = Array.isArray(backup.data.assets) ? backup.data.assets : [];
+    const folders = normalized.folders;
+    const projects = normalized.projects;
+    const assets = normalized.assets;
 
     return enqueueWrite(async () => {
       const db = await open();
@@ -501,117 +519,11 @@ const ProjectDB = (() => {
     });
   }
 
-  /* ---------- Single-file export / import (share one work file) ---------- */
-
-  async function exportProject(id) {
-    const project = await getProject(id);
-    if (!project) throw new Error("File not found.");
-
-    const copy = { ...project };
-
-    if (copy.pdfData instanceof ArrayBuffer) {
-      copy.pdfData = arrayBufferToBase64(copy.pdfData);
-      copy._pdfIsBase64 = true;
-    } else {
-      delete copy.pdfData;
-    }
-    delete copy._assetSaved;
-
-    return {
-      format: "field-measurement-file",
-      version: 1,
-      exportedAt: new Date().toISOString(),
-      project: copy
-    };
-  }
-
-  async function importProject(fileData, folderId) {
-    if (!fileData || fileData.format !== "field-measurement-file" || !fileData.project) {
-      throw new Error("This file is not a Field Measurement file export.");
-    }
-
-    const source = fileData.project;
-    const newId = makeId("project");
-
-    const record = {
-      ...source,
-      id: newId,
-      folderId: folderId || null,
-      createdAt: Date.now(),
-      updatedAt: Date.now()
-    };
-
-    let pdfBuffer = null;
-    if (record._pdfIsBase64 && typeof record.pdfData === "string") {
-      pdfBuffer = base64ToArrayBuffer(record.pdfData);
-      delete record._pdfIsBase64;
-    }
-    delete record.pdfData;
-    delete record._assetSaved;
-
-    return enqueueWrite(async () => {
-      await runRequest(PROJECTS, "readwrite", store => store.put(record));
-
-      if (pdfBuffer) {
-        await runRequest(ASSETS, "readwrite", store => store.put({
-          projectId: newId,
-          pdfData: pdfBuffer
-        }));
-      }
-
-      return record;
-    });
-  }
-
-  async function importTransferProject(source, pdfBuffer, options = {}) {
-    if (!source) throw new Error("Missing project data.");
-
-    const mode = options.mode || "new";
-    const now = Date.now();
-    const localId = mode === "overwrite" && options.existingId
-      ? options.existingId
-      : makeId("project");
-    const sourceProjectId = source.projectId || source.id || makeId("project");
-    const projectId = mode === "keep-both" ? localId : sourceProjectId;
-
-    const record = {
-      ...source,
-      id: localId,
-      projectId,
-      folderId: options.folderId || null,
-      createdAt: mode === "overwrite"
-        ? (source.createdAt || now)
-        : now,
-      updatedAt: Number(source.updatedAt) || now
-    };
-
-    delete record.pdfData;
-    delete record._assetSaved;
-    delete record._pdfIsBase64;
-
-    return enqueueWrite(async () => {
-      await runRequest(PROJECTS, "readwrite", store => store.put(record));
-
-      if (pdfBuffer instanceof ArrayBuffer) {
-        await runRequest(ASSETS, "readwrite", store => store.put({
-          projectId: localId,
-          pdfData: pdfBuffer
-        }));
-      } else if (mode === "overwrite") {
-        // A data-only package should not erase an existing local PDF.
-      }
-
-      return record;
-    });
-  }
-
   return {
     open,
     exportAll,
     importAll,
-    exportProject,
-    importProject,
-    importTransferProject,
+    normalizeBackup,
     getAllProjects,
     getProject,
     saveProject,
