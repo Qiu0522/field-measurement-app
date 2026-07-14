@@ -552,12 +552,6 @@ const Workspace = (() => {
       if (!els.pointContextMenu.contains(event.target)) {
         hidePointContextMenu();
       }
-      if (els.orderMenu &&
-          !els.orderMenu.contains(event.target) &&
-          event.target !== els.orderBtn &&
-          !els.orderBtn.contains(event.target)) {
-        els.orderMenu.classList.add("hidden");
-      }
     });
 
     els.measurementModal.querySelectorAll("[data-key]").forEach(button => {
@@ -813,7 +807,7 @@ const Workspace = (() => {
   }
 
   function captureCurrentPageState() {
-    if (!project || project.kind !== "pdf") return;
+    if (!project) return;
     pageStates[currentPdfPage] = {
       points: clone(points), dataTypes: clone(dataTypes), textNotes: clone(textNotes),
       commentImageData, selectedDataId: els.dataSelect ? els.dataSelect.value : null,
@@ -1635,57 +1629,6 @@ const Workspace = (() => {
 
     els.sideModal.classList.add("hidden");
     scheduleAutoSave();
-  }
-
-  function orderCurrentData() {
-    const dataType = getDataType(els.dataSelect.value);
-
-    if (!dataType) return;
-
-    const typePoints =
-      points.filter(point => point.dataId === dataType.id);
-
-    if (!typePoints.length) {
-      setStatus("This data type has no points to order yet.");
-      return;
-    }
-
-    openDirectionModal(dataType.direction || "clockwise", direction => {
-      if (!direction) return;
-
-      dataType.direction = direction;
-      dataType.manual = false;
-      assignMissingSidesForData(dataType.id);
-      dataType.ordered = true;
-
-      recalculateDataTypeOrder(dataType.id);
-
-      showOrderLabels = true;
-      updateLabelsButton();
-      refreshAllPoints();
-      renderDataSelect(dataType.id);
-
-      setStatus(`${dataType.name} ordered ${direction}.`);
-
-      scheduleAutoSave();
-    });
-  }
-
-  function assignMissingSidesForData(dataId) {
-    const typePoints =
-      points.filter(point => point.dataId === dataId);
-
-    if (!typePoints.length) return;
-
-    const bounds = getBounds(typePoints);
-
-    typePoints.forEach(point => {
-      // Explicit user assignments are protected. Auto points are rechecked
-      // whenever Order Current Data is run.
-      if (!point.sideLocked) {
-        point.assignedSide = guessSide(point, bounds);
-      }
-    });
   }
 
   function recalculateDataTypeOrder(dataId) {
@@ -3467,7 +3410,7 @@ const Workspace = (() => {
 
   async function persistProjectState() {
     if (!project) return;
-    if (project.kind === "pdf") captureCurrentPageState();
+    captureCurrentPageState();
 
     project.state = {
       points,
