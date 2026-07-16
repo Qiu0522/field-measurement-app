@@ -114,12 +114,16 @@
       </div>
 
       <div class="toolbarRow drawingTools mode-measure">
-        <label class="compactLabel dataControl measureOnly">Data Type <span id="dataTypeSwatch" class="dataTypeSwatch"></span><select id="dataSelect"></select></label>
+        <select id="dataSelect" class="hidden"></select>
+        <button id="dataTypePickerBtn" class="toolbarButton dataTypePickerBtn measureOnly" type="button" title="Choose or manage data type">
+          <span id="dataTypeSwatch" class="dataTypeSwatch"></span>
+          <span id="dataTypePickerLabel">Data Type</span>
+        </button>
         <button id="addBtn" class="toolbarButton measureOnly" type="button"><svg class="uiIcon" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Point</button>
         <button id="lockBtn" class="toolbarButton measureOnly" type="button"><svg class="uiIcon" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>Lock</button>
         <button id="orderBtn" class="toolbarButton reviewOnly" type="button"><svg class="uiIcon" viewBox="0 0 24 24"><path d="M8 4v16m-3-3 3 3 3-3M16 20V4m-3 3 3-3 3 3"/></svg>Auto Sort</button>
         <button id="batchAssignBtn" class="toolbarButton reviewOnly" type="button"><svg class="uiIcon" viewBox="0 0 24 24"><rect x="3" y="4" width="7" height="7" rx="1"/><rect x="14" y="4" width="7" height="7" rx="1"/><path d="m5 7 2 2 4-5m5 14h5M3 18h7"/></svg>Batch Side</button>
-        <button id="labelsBtn" class="toolbarButton reviewOnly" type="button"><svg class="uiIcon" viewBox="0 0 24 24"><path d="M4 6h10l6 6-8 8-8-8z"/><circle cx="9" cy="10" r="1"/></svg>Labels</button>
+        <button id="labelsBtn" class="toolbarButton" type="button"><svg class="uiIcon" viewBox="0 0 24 24"><path d="M4 6h10l6 6-8 8-8-8z"/><circle cx="9" cy="10" r="1"/></svg>Labels</button>
         <button id="reviewBtn" class="toolbarButton reviewOnly" type="button"><svg class="uiIcon" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></svg>Preview CSV</button>
         <div class="zoomControl labelSizeControl measureOnly" title="Measurement label size">
           <button id="labelSizeDownBtn" class="toolbarButton iconButton" type="button" title="Smaller labels">A−</button>
@@ -413,31 +417,48 @@
           </div>
         </div>
 
-        <div class="v6MainGrid">
-          <button data-key="7">7</button>
-          <button data-key="8">8</button>
-          <button data-key="9">9</button>
-          <button data-action="backspace" class="operatorButton deleteButton tallDelete" title="Backspace">⌫</button>
-          <button data-denominator="2" class="fractionButton">/2</button>
+        <div class="v6MainGrid fractionKeypadGrid">
+          <div class="numberPad">
+            <button data-key="7">7</button>
+            <button data-key="8">8</button>
+            <button data-key="9">9</button>
 
-          <button data-key="4">4</button>
-          <button data-key="5">5</button>
-          <button data-key="6">6</button>
-          <button data-denominator="4" class="fractionButton">/4</button>
+            <button data-key="4">4</button>
+            <button data-key="5">5</button>
+            <button data-key="6">6</button>
 
-          <button data-key="1">1</button>
-          <button data-key="2">2</button>
-          <button data-key="3">3</button>
-          <button data-action="clear" class="clearButton" title="Clear all">Clear</button>
-          <button data-denominator="8" class="fractionButton">/8</button>
+            <button data-key="1">1</button>
+            <button data-key="2">2</button>
+            <button data-key="3">3</button>
 
-          <button data-key="/" class="operatorButton">/</button>
-          <button data-key="0">0</button>
-          <button data-action="negative" class="operatorButton">−</button>
-          <button data-key="X" id="missingValueBtn" class="missingValueButton" type="button">X</button>
-          <button data-denominator="16" class="fractionButton">/16</button>
+            <button data-action="negative" class="operatorButton">−</button>
+            <button data-key="0">0</button>
+            <button data-key="X" id="missingValueBtn" class="missingValueButton" type="button">X</button>
 
-          <button data-key=" " class="spaceButton gridSpaceButton">SPACE</button>
+            <button data-action="backspace" class="operatorButton deleteButton" title="Backspace">⌫</button>
+            <button data-action="clear" class="clearButton" title="Clear all">Clear</button>
+          </div>
+
+          <div class="quickFractionPad" aria-label="Quick fractions grouped by denominator">
+            <button class="fractionDenom2" data-fraction="1/2">1/2</button>
+
+            <button class="fractionDenom4" data-fraction="1/4">1/4</button>
+            <button class="fractionDenom4" data-fraction="3/4">3/4</button>
+
+            <button class="fractionDenom8" data-fraction="1/8">1/8</button>
+            <button class="fractionDenom8" data-fraction="3/8">3/8</button>
+            <button class="fractionDenom8" data-fraction="5/8">5/8</button>
+            <button class="fractionDenom8" data-fraction="7/8">7/8</button>
+
+            <button class="fractionDenom16" data-fraction="1/16">1/16</button>
+            <button class="fractionDenom16" data-fraction="3/16">3/16</button>
+            <button class="fractionDenom16" data-fraction="5/16">5/16</button>
+            <button class="fractionDenom16" data-fraction="7/16">7/16</button>
+            <button class="fractionDenom16" data-fraction="9/16">9/16</button>
+            <button class="fractionDenom16" data-fraction="11/16">11/16</button>
+            <button class="fractionDenom16" data-fraction="13/16">13/16</button>
+            <button class="fractionDenom16" data-fraction="15/16">15/16</button>
+          </div>
         </div>
 
         <div class="measurementActions">
@@ -447,9 +468,8 @@
       </div>
 
       <p class="measurementHint">
-        Use <strong>X</strong> when a measurement is missing. Otherwise type the numerator first, then tap <strong>/4</strong>, <strong>/8</strong>,
-        or <strong>/16</strong>. A space appears as an underscore while typing:
-        <strong>26_3/8</strong> is saved as <strong>26 3/8</strong>.
+        Type the whole number, then tap a fraction. The app adds the space automatically:
+        <strong>26</strong> + <strong>3/8</strong> becomes <strong>26 3/8</strong>. Use <strong>X</strong> when a measurement is missing.
       </p>
     </div>
   </div>
@@ -473,6 +493,19 @@
     </div>
   </div>
 
+  <div id="dataTypePickerModal" class="modalBackdrop hidden">
+    <div class="modalCard dataTypePickerCard">
+      <h2>Choose Data Type</h2>
+
+      <div id="dataTypePickerList" class="dataTypePickerList"></div>
+
+      <div class="modalActions">
+        <button id="manageDataTypesFromPickerBtn" type="button">⚙ Manage Data Types</button>
+        <button id="cancelDataTypePickerBtn" class="primaryButton" type="button">Close</button>
+      </div>
+    </div>
+  </div>
+
   <div id="dataTypeModal" class="modalBackdrop hidden">
     <div class="modalCard">
       <h2>Add Data Type</h2>
@@ -490,6 +523,34 @@
       <div class="modalActions">
         <button id="cancelDataTypeBtn" type="button">Cancel</button>
         <button id="confirmDataTypeBtn" class="primaryButton" type="button">Add</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="manageDataTypesModal" class="modalBackdrop hidden">
+    <div class="modalCard manageDataTypesCard">
+      <h2>Manage Data Types</h2>
+      <p class="manageDataTypesHint">Rename or recolor a data type any time. Deleting a data type that still has points will ask whether to move those points to another data type first, or delete them permanently.</p>
+
+      <div id="manageDataTypesList" class="manageDataTypesList"></div>
+
+      <div class="modalActions">
+        <button id="addDataTypeFromManageBtn" type="button">+ Add Data Type</button>
+        <button id="closeManageDataTypesBtn" class="primaryButton" type="button">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="reassignDataTypeModal" class="modalBackdrop hidden">
+    <div class="modalCard reassignDataTypeCard">
+      <h2 id="reassignDataTypeTitle">Move points before deleting?</h2>
+      <p id="reassignDataTypeHint" class="reassignDataTypeHint"></p>
+
+      <div id="reassignDataTypeList" class="dataTypePickerList"></div>
+
+      <div class="modalActions">
+        <button id="deleteDataTypePermanentlyBtn" class="dangerButton" type="button">Delete permanently instead</button>
+        <button id="cancelReassignDataTypeBtn" class="primaryButton" type="button">Cancel</button>
       </div>
     </div>
   </div>

@@ -14,6 +14,8 @@ const Workspace = (() => {
   let dataTypes = [];
 
   let pointMode = "lock";
+  let dataTypeModalFromManage = false;
+  let pendingDeleteDataTypeId = null;
   let commentTool = "none";
   let brushColor = "#ff0000";
   let brushWidth = 5;
@@ -219,6 +221,26 @@ const Workspace = (() => {
     els.dataTypeColorInput = document.getElementById("dataTypeColorInput");
     els.cancelDataTypeBtn = document.getElementById("cancelDataTypeBtn");
     els.confirmDataTypeBtn = document.getElementById("confirmDataTypeBtn");
+
+    els.manageDataTypesModal = document.getElementById("manageDataTypesModal");
+    els.manageDataTypesList = document.getElementById("manageDataTypesList");
+    els.closeManageDataTypesBtn = document.getElementById("closeManageDataTypesBtn");
+    els.addDataTypeFromManageBtn = document.getElementById("addDataTypeFromManageBtn");
+
+    els.dataTypePickerBtn = document.getElementById("dataTypePickerBtn");
+    els.dataTypePickerModal = document.getElementById("dataTypePickerModal");
+    els.dataTypePickerList = document.getElementById("dataTypePickerList");
+    els.dataTypePickerLabel = document.getElementById("dataTypePickerLabel");
+    els.manageDataTypesFromPickerBtn = document.getElementById("manageDataTypesFromPickerBtn");
+    els.cancelDataTypePickerBtn = document.getElementById("cancelDataTypePickerBtn");
+
+    els.reassignDataTypeModal = document.getElementById("reassignDataTypeModal");
+    els.reassignDataTypeTitle = document.getElementById("reassignDataTypeTitle");
+    els.reassignDataTypeHint = document.getElementById("reassignDataTypeHint");
+    els.reassignDataTypeList = document.getElementById("reassignDataTypeList");
+    els.deleteDataTypePermanentlyBtn = document.getElementById("deleteDataTypePermanentlyBtn");
+    els.cancelReassignDataTypeBtn = document.getElementById("cancelReassignDataTypeBtn");
+
 
     els.sideModal = document.getElementById("sideModal");
     els.cancelSideBtn = document.getElementById("cancelSideBtn");
@@ -562,9 +584,9 @@ const Workspace = (() => {
     els.cancelTextBtn.addEventListener("click", cancelTextPlacement);
     els.confirmTextBtn.addEventListener("click", confirmTextPlacement);
 
-    els.measurementModal.querySelectorAll("[data-denominator]").forEach(button => {
+    els.measurementModal.querySelectorAll("[data-fraction]").forEach(button => {
       button.addEventListener("click", () => {
-        appendMeasurementDenominator(button.dataset.denominator);
+        appendMeasurementFraction(button.dataset.fraction);
       });
     });
 
@@ -608,9 +630,60 @@ const Workspace = (() => {
     els.cancelDataTypeBtn.addEventListener("click", () => {
       els.dataTypeModal.classList.add("hidden");
       renderDataSelect(dataTypes[0]?.id);
+
+      if (pendingDeleteDataTypeId) {
+        // Cancelling "create new type" mid-delete-flow: go back to the
+        // reassign picker rather than losing the pending-delete context.
+        openReassignModal(pendingDeleteDataTypeId);
+        return;
+      }
+
+      if (dataTypeModalFromManage) {
+        dataTypeModalFromManage = false;
+        renderManageDataTypesList();
+        els.manageDataTypesModal.classList.remove("hidden");
+      }
     });
 
     els.confirmDataTypeBtn.addEventListener("click", confirmDataType);
+
+    els.dataTypePickerBtn.addEventListener("click", openDataTypePicker);
+    els.cancelDataTypePickerBtn.addEventListener("click", () => {
+      els.dataTypePickerModal.classList.add("hidden");
+    });
+    els.manageDataTypesFromPickerBtn.addEventListener("click", () => {
+      els.dataTypePickerModal.classList.add("hidden");
+      openManageDataTypesModal();
+    });
+
+    els.closeManageDataTypesBtn.addEventListener("click", () => {
+      els.manageDataTypesModal.classList.add("hidden");
+    });
+
+    els.addDataTypeFromManageBtn.addEventListener("click", () => {
+      dataTypeModalFromManage = true;
+      els.manageDataTypesModal.classList.add("hidden");
+      els.dataTypeNameInput.value = "New Data";
+      els.dataTypeColorInput.value = "#000000";
+      els.dataTypeModal.classList.remove("hidden");
+    });
+
+    els.cancelReassignDataTypeBtn.addEventListener("click", () => {
+      pendingDeleteDataTypeId = null;
+      els.reassignDataTypeModal.classList.add("hidden");
+      renderManageDataTypesList();
+      els.manageDataTypesModal.classList.remove("hidden");
+    });
+
+    els.deleteDataTypePermanentlyBtn.addEventListener("click", () => {
+      if (!pendingDeleteDataTypeId) return;
+      deleteDataTypeAndPoints(pendingDeleteDataTypeId);
+      pendingDeleteDataTypeId = null;
+      els.reassignDataTypeModal.classList.add("hidden");
+      renderManageDataTypesList();
+      els.manageDataTypesModal.classList.remove("hidden");
+    });
+
 
     els.sideModal.querySelectorAll("[data-side]").forEach(button => {
       button.addEventListener("click", () => {
@@ -1010,11 +1083,6 @@ const Workspace = (() => {
       els.dataSelect.appendChild(option);
     });
 
-    const addOption = document.createElement("option");
-    addOption.value = "__add_data_type__";
-    addOption.textContent = "+ Add Data Type";
-    els.dataSelect.appendChild(addOption);
-
     if (dataTypes.some(dataType => dataType.id === previousValue)) {
       els.dataSelect.value = previousValue;
     } else if (dataTypes.length) {
@@ -1028,18 +1096,58 @@ const Workspace = (() => {
     if (!els.dataTypeSwatch) return;
     const dataType = getDataType(els.dataSelect.value);
     els.dataTypeSwatch.style.background = dataType ? (dataType.color || "#111") : "transparent";
+    if (els.dataTypePickerLabel) {
+      els.dataTypePickerLabel.textContent = dataType ? dataType.name : "Data Type";
+    }
   }
 
   function handleDataSelectChange() {
-    if (els.dataSelect.value !== "__add_data_type__") {
-      updateDataTypeSwatch();
-      scheduleAutoSave();
-      return;
-    }
+    updateDataTypeSwatch();
+    scheduleAutoSave();
+  }
 
-    els.dataTypeNameInput.value = "New Data";
-    els.dataTypeColorInput.value = "#000000";
-    els.dataTypeModal.classList.remove("hidden");
+  function openDataTypePicker() {
+    renderDataTypePickerList();
+    els.dataTypePickerModal.classList.remove("hidden");
+  }
+
+  function renderDataTypePickerList() {
+    els.dataTypePickerList.innerHTML = "";
+    const currentId = els.dataSelect.value;
+
+    dataTypes.forEach(dataType => {
+      const pointCount = points.filter(point => point.dataId === dataType.id).length;
+
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "dataTypePickerRow";
+      row.classList.toggle("activeDataType", dataType.id === currentId);
+
+      const swatch = document.createElement("span");
+      swatch.className = "dataTypePickerRowSwatch";
+      swatch.style.background = dataType.color || "#111";
+
+      const name = document.createElement("span");
+      name.className = "dataTypePickerRowName";
+      name.textContent = dataType.name;
+
+      const count = document.createElement("span");
+      count.className = "dataTypePickerRowCount";
+      count.textContent = pointCount === 1 ? "1 point" : `${pointCount} points`;
+
+      row.appendChild(swatch);
+      row.appendChild(name);
+      row.appendChild(count);
+
+      row.addEventListener("click", () => {
+        els.dataSelect.value = dataType.id;
+        updateDataTypeSwatch();
+        scheduleAutoSave();
+        els.dataTypePickerModal.classList.add("hidden");
+      });
+
+      els.dataTypePickerList.appendChild(row);
+    });
   }
 
   function confirmDataType() {
@@ -1064,6 +1172,195 @@ const Workspace = (() => {
 
     els.dataTypeModal.classList.add("hidden");
     renderDataSelect(dataType.id);
+    scheduleAutoSave();
+
+    if (pendingDeleteDataTypeId) {
+      const sourceId = pendingDeleteDataTypeId;
+      pendingDeleteDataTypeId = null;
+      reassignPointsAndDeleteDataType(sourceId, dataType.id);
+      renderManageDataTypesList();
+      els.manageDataTypesModal.classList.remove("hidden");
+      return;
+    }
+
+    if (dataTypeModalFromManage) {
+      dataTypeModalFromManage = false;
+      renderManageDataTypesList();
+      els.manageDataTypesModal.classList.remove("hidden");
+    }
+  }
+
+  function openManageDataTypesModal() {
+    renderManageDataTypesList();
+    els.manageDataTypesModal.classList.remove("hidden");
+  }
+
+  function renderManageDataTypesList() {
+    els.manageDataTypesList.innerHTML = "";
+
+    dataTypes.forEach(dataType => {
+      const pointCount = points.filter(point => point.dataId === dataType.id).length;
+
+      const row = document.createElement("div");
+      row.className = "manageDataTypeRow";
+
+      const colorInput = document.createElement("input");
+      colorInput.type = "color";
+      colorInput.value = dataType.color || "#000000";
+      colorInput.title = "Color";
+      colorInput.addEventListener("input", () => {
+        dataType.color = colorInput.value;
+        updateDataTypeSwatch();
+        renderDataSelect(els.dataSelect.value);
+        refreshAllPoints();
+        scheduleAutoSave();
+      });
+
+      const nameInput = document.createElement("input");
+      nameInput.type = "text";
+      nameInput.value = dataType.name;
+      nameInput.title = "Name";
+      nameInput.addEventListener("change", () => {
+        const trimmed = nameInput.value.trim();
+        if (!trimmed) {
+          nameInput.value = dataType.name; // reject blank names, restore previous
+          return;
+        }
+        dataType.name = trimmed;
+        renderDataSelect(els.dataSelect.value);
+        scheduleAutoSave();
+      });
+
+      const countLabel = document.createElement("span");
+      countLabel.className = "manageDataTypeCount";
+      countLabel.textContent = pointCount === 1 ? "1 point" : `${pointCount} points`;
+
+      const deleteBtn = document.createElement("button");
+      deleteBtn.type = "button";
+      deleteBtn.className = "manageDataTypeDeleteBtn";
+      deleteBtn.textContent = "Delete";
+      deleteBtn.addEventListener("click", () => deleteDataType(dataType.id));
+
+      row.appendChild(colorInput);
+      row.appendChild(nameInput);
+      row.appendChild(countLabel);
+      row.appendChild(deleteBtn);
+      els.manageDataTypesList.appendChild(row);
+    });
+  }
+
+  function deleteDataType(dataId) {
+    if (dataTypes.length <= 1) {
+      alert("You need at least one data type — add a new one before deleting this one.");
+      return;
+    }
+
+    const dataType = getDataType(dataId);
+    if (!dataType) return;
+
+    const affectedPoints = points.filter(point => point.dataId === dataId);
+
+    if (!affectedPoints.length) {
+      if (!confirm(`Delete the data type "${dataType.name}"? It has no points, so nothing else will be affected.`)) return;
+      deleteDataTypeAndPoints(dataId);
+      renderManageDataTypesList();
+      return;
+    }
+
+    openReassignModal(dataId);
+  }
+
+  function openReassignModal(dataId) {
+    const dataType = getDataType(dataId);
+    if (!dataType) return;
+
+    pendingDeleteDataTypeId = dataId;
+    const affectedCount = points.filter(point => point.dataId === dataId).length;
+
+    els.reassignDataTypeTitle.textContent = `Move ${affectedCount} point(s) out of "${dataType.name}"?`;
+    els.reassignDataTypeHint.textContent =
+      `"${dataType.name}" has ${affectedCount} point(s). Pick another data type to move them to before ` +
+      "deleting this one, or delete everything permanently below.";
+
+    renderReassignDataTypeList(dataId);
+    els.manageDataTypesModal.classList.add("hidden");
+    els.reassignDataTypeModal.classList.remove("hidden");
+  }
+
+  function renderReassignDataTypeList(sourceId) {
+    els.reassignDataTypeList.innerHTML = "";
+
+    dataTypes.filter(dt => dt.id !== sourceId).forEach(dataType => {
+      const pointCount = points.filter(point => point.dataId === dataType.id).length;
+
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "dataTypePickerRow";
+
+      const swatch = document.createElement("span");
+      swatch.className = "dataTypePickerRowSwatch";
+      swatch.style.background = dataType.color || "#111";
+
+      const name = document.createElement("span");
+      name.className = "dataTypePickerRowName";
+      name.textContent = `Move to "${dataType.name}"`;
+
+      const count = document.createElement("span");
+      count.className = "dataTypePickerRowCount";
+      count.textContent = pointCount === 1 ? "1 point" : `${pointCount} points`;
+
+      row.appendChild(swatch);
+      row.appendChild(name);
+      row.appendChild(count);
+
+      row.addEventListener("click", () => {
+        reassignPointsAndDeleteDataType(sourceId, dataType.id);
+        pendingDeleteDataTypeId = null;
+        els.reassignDataTypeModal.classList.add("hidden");
+        renderManageDataTypesList();
+        els.manageDataTypesModal.classList.remove("hidden");
+      });
+
+      els.reassignDataTypeList.appendChild(row);
+    });
+
+    const createRow = document.createElement("button");
+    createRow.type = "button";
+    createRow.className = "dataTypePickerRow createNewDataTypeRow";
+    createRow.textContent = "+ Create New Data Type";
+    createRow.addEventListener("click", () => {
+      // pendingDeleteDataTypeId stays set — confirmDataType() checks it
+      // and finishes the reassign-and-delete once the new type exists.
+      els.reassignDataTypeModal.classList.add("hidden");
+      els.dataTypeNameInput.value = "New Data";
+      els.dataTypeColorInput.value = "#000000";
+      els.dataTypeModal.classList.remove("hidden");
+    });
+    els.reassignDataTypeList.appendChild(createRow);
+  }
+
+  function reassignPointsAndDeleteDataType(sourceId, destinationId) {
+    points.forEach(point => {
+      if (point.dataId === sourceId) point.dataId = destinationId;
+    });
+    dataTypes = dataTypes.filter(dt => dt.id !== sourceId);
+
+    renderDataSelect(els.dataSelect.value === sourceId ? destinationId : undefined);
+    refreshAllPoints();
+    updateNoSideBanner();
+    scheduleAutoSave();
+    setStatus(`Points moved to "${getDataType(destinationId)?.name || "the new data type"}".`);
+  }
+
+  function deleteDataTypeAndPoints(dataId) {
+    const affectedPoints = points.filter(point => point.dataId === dataId);
+    affectedPoints.forEach(point => removePointElement(point.uid));
+    points = points.filter(point => point.dataId !== dataId);
+    dataTypes = dataTypes.filter(dt => dt.id !== dataId);
+
+    renderDataSelect(dataTypes[0]?.id);
+    refreshAllPoints();
+    updateNoSideBanner();
     scheduleAutoSave();
   }
 
@@ -2242,32 +2539,53 @@ const Workspace = (() => {
     setMeasurementRawValue(base + value);
   }
 
-  function appendMeasurementDenominator(denominator) {
+  function appendMeasurementFraction(fraction) {
     /*
-      Example:
-      3 + /8  -> 3/8
-      26_3 + /8 -> 26_3/8
+      Fast fraction entry:
+      26 + 3/8  -> 26 3/8
+      -26 + 1/2 -> -26 1/2
+      empty + 1/4 -> 1/4
 
-      If the current value already ends in a completed fraction, the button
-      starts a new fraction after a visible space.
+      If a fraction is already present, tapping another fraction replaces it.
+      This makes corrections a single tap and prevents invalid double fractions.
     */
-    let nextValue = measurementRawValue;
+    const selectedFraction = String(fraction || "").trim();
+    if (!/^\d+\/\d+$/.test(selectedFraction)) return;
 
-    if (!nextValue) {
-      setMeasurementRawValue("1/" + denominator);
+    let current = measurementRawValue.toUpperCase() === "X"
+      ? ""
+      : String(measurementRawValue || "").trim();
+
+    if (!current) {
+      setMeasurementRawValue(selectedFraction);
       return;
     }
 
-    const lastToken = nextValue.split(" ").pop();
-
-    if (lastToken.includes("/")) {
-      if (!nextValue.endsWith(" ")) nextValue += " ";
-      nextValue += "1/" + denominator;
-    } else {
-      nextValue += "/" + denominator;
+    if (current === "-") {
+      setMeasurementRawValue("-" + selectedFraction);
+      return;
     }
 
-    setMeasurementRawValue(nextValue);
+    // Whole number only: insert the missing space automatically.
+    if (/^-?\d+$/.test(current)) {
+      setMeasurementRawValue(current + " " + selectedFraction);
+      return;
+    }
+
+    // Mixed number already has a fraction: replace that fraction.
+    if (/^-?\d+\s+\d+\/\d+$/.test(current)) {
+      setMeasurementRawValue(current.replace(/\d+\/\d+$/, selectedFraction));
+      return;
+    }
+
+    // Bare fraction already entered: replace it while preserving a minus sign.
+    if (/^-?\d+\/\d+$/.test(current)) {
+      setMeasurementRawValue(current.startsWith("-") ? "-" + selectedFraction : selectedFraction);
+      return;
+    }
+
+    // Safe fallback for any partially edited whole number.
+    setMeasurementRawValue(current + " " + selectedFraction);
   }
 
   function measurementBackspace() {
