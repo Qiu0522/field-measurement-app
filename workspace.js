@@ -74,6 +74,7 @@ const Workspace = (() => {
   let lastAutoSortDataId = null;
   let lastAutoSortSide = "N";
   let lastAutoSortDirection = "clockwise";
+  let lastAutoSortMethod = "position";
 
   let pdfDocument = null;
   let currentPdfPage = 1;
@@ -170,6 +171,7 @@ const Workspace = (() => {
     els.autoSortDataType = document.getElementById("autoSortDataType");
     els.autoSortSide = document.getElementById("autoSortSide");
     els.autoSortDirectionChoices = Array.from(document.querySelectorAll('input[name="autoSortDirection"]'));
+    els.autoSortMethodChoices = Array.from(document.querySelectorAll('input[name="autoSortMethod"]'));
     els.confirmAutoSortBtn = document.getElementById("confirmAutoSortBtn");
     els.cancelAutoSortBtn = document.getElementById("cancelAutoSortBtn");
     els.sideChoices = Array.from(document.querySelectorAll(".sideBtn"));
@@ -2005,28 +2007,85 @@ const Workspace = (() => {
     if (!dataType.lockedSides.includes(side)) dataType.lockedSides.push(side);
   }
 
-  function autoSortSide(dataId, side, direction = "clockwise") {
+  function autoSortSide(dataId, side, direction = "clockwise", method = "position") {
     const dataType = getDataType(dataId);
     if (!dataType) return;
 
-    const sorted = pointsInSide(dataId, side).slice();
     const clockwise = direction !== "counterclockwise";
+    let sorted;
 
-    // Clockwise: N left→right, E top→bottom, S right→left, W bottom→top.
-    // Counterclockwise reverses each side.
-    const ascending = clockwise
-      ? (side === "N" || side === "E")
-      : (side === "S" || side === "W");
-
-    if (side === "E" || side === "W") {
-      sorted.sort((a, b) => ascending ? a.y - b.y : b.y - a.y);
+    if (method === "angle") {
+      sorted = sortPointsByAngle(pointsInSide(dataId, side), clockwise);
     } else {
-      sorted.sort((a, b) => ascending ? a.x - b.x : b.x - a.x);
+      sorted = pointsInSide(dataId, side).slice();
+
+      // Clockwise: N left→right, E top→bottom, S right→left, W bottom→top.
+      // Counterclockwise reverses each side.
+      const ascending = clockwise
+        ? (side === "N" || side === "E")
+        : (side === "S" || side === "W");
+
+      if (side === "E" || side === "W") {
+        sorted.sort((a, b) => ascending ? a.y - b.y : b.y - a.y);
+      } else {
+        sorted.sort((a, b) => ascending ? a.x - b.x : b.x - a.x);
+      }
     }
 
     if (!Array.isArray(dataType.lockedSides)) dataType.lockedSides = [];
     sorted.forEach((point, index) => { point.manualSeq = index + 1; });
     if (!dataType.lockedSides.includes(side)) dataType.lockedSides.push(side);
+  }
+
+  /*
+    Angle-based ordering for curved/circular walls, where a straight
+    left-right or top-bottom coordinate sort breaks down because the arc
+    bends back on itself (two points at very different positions along the
+    wall can share the same X or Y).
+
+    Approach: find the centre of this group of points, measure each point's
+    angle around that centre, then walk around in angle order. In screen
+    coordinates (Y increases downward), increasing atan2(dy, dx) already
+    matches a visually clockwise sweep, so no axis flip is needed.
+
+    Because a single wall is only ever a partial arc (not a full loop), the
+    points won't span all 360°. We find the single largest gap between
+    consecutive angles and treat that as the seam where the wall "ends" —
+    ordering starts right after that gap. This avoids the wrap-around bug
+    where a wall crossing the 0°/360° line would otherwise sort incorrectly.
+  */
+  function sortPointsByAngle(pointsList, clockwise) {
+    if (pointsList.length <= 1) return pointsList.slice();
+
+    const cx = pointsList.reduce((sum, p) => sum + p.x, 0) / pointsList.length;
+    const cy = pointsList.reduce((sum, p) => sum + p.y, 0) / pointsList.length;
+
+    const withAngles = pointsList.map(point => {
+      let angle = Math.atan2(point.y - cy, point.x - cx);
+      if (angle < 0) angle += 2 * Math.PI;
+      return { point, angle };
+    });
+
+    withAngles.sort((a, b) => a.angle - b.angle);
+
+    // Find the largest gap between consecutive angles (wrapping past the
+    // last point back to the first, +2π) — that gap is the seam.
+    let maxGap = -1;
+    let seamIndex = 0;
+    for (let i = 0; i < withAngles.length; i += 1) {
+      const current = withAngles[i].angle;
+      const isLast = i === withAngles.length - 1;
+      const next = withAngles[isLast ? 0 : i + 1].angle + (isLast ? 2 * Math.PI : 0);
+      const gap = next - current;
+      if (gap > maxGap) {
+        maxGap = gap;
+        seamIndex = isLast ? 0 : i + 1;
+      }
+    }
+
+    const rotated = withAngles.slice(seamIndex).concat(withAngles.slice(0, seamIndex));
+    const ordered = clockwise ? rotated : rotated.slice().reverse();
+    return ordered.map(item => item.point);
   }
 
   function getBounds(typePoints) {
@@ -2319,6 +2378,10 @@ const Workspace = (() => {
       choice.checked = choice.value === lastAutoSortDirection;
     });
 
+    els.autoSortMethodChoices.forEach(choice => {
+      choice.checked = choice.value === lastAutoSortMethod;
+    });
+
     els.autoSortModal.classList.remove("hidden");
   }
 
@@ -2331,6 +2394,8 @@ const Workspace = (() => {
     const sideSelection = els.autoSortSide.value;
     const selectedDirection = els.autoSortDirectionChoices.find(choice => choice.checked);
     const direction = selectedDirection ? selectedDirection.value : "clockwise";
+    const selectedMethod = els.autoSortMethodChoices.find(choice => choice.checked);
+    const method = selectedMethod ? selectedMethod.value : "position";
     const targetDataTypes = dataSelection === "__all__" ? dataTypes.slice() : [getDataType(dataSelection)].filter(Boolean);
     const targetSides = sideSelection === "__all__" ? ["N", "E", "S", "W"] : [sideSelection];
     if (!targetDataTypes.length) { setStatus("Choose a valid data type."); return; }
@@ -2339,16 +2404,17 @@ const Workspace = (() => {
     if (!targets.length) { setStatus("No matching assigned points to sort."); return; }
     closeAutoSortModal();
     setStatus("Sorting…");
-    lastAutoSortDataId = dataSelection; lastAutoSortSide = sideSelection; lastAutoSortDirection = direction;
+    lastAutoSortDataId = dataSelection; lastAutoSortSide = sideSelection; lastAutoSortDirection = direction; lastAutoSortMethod = method;
     const before = {}; targetDataTypes.forEach(dt => { before[dt.id] = snapshotOrder(dt.id); });
-    targets.forEach(({dt, side}) => autoSortSide(dt.id, side, direction));
+    targets.forEach(({dt, side}) => autoSortSide(dt.id, side, direction, method));
     targetDataTypes.forEach(dt => { dt.direction = direction; recalculateDataTypeOrder(dt.id); });
     const after = {}; targetDataTypes.forEach(dt => { after[dt.id] = snapshotOrder(dt.id); });
     pushUndo({ type: "reorderBatch", before, after });
     refreshAllPoints(); renderDataSelect(currentDataId());
     const typeLabel = dataSelection === "__all__" ? "all data types" : targetDataTypes[0].name;
     const sideLabel = sideSelection === "__all__" ? "all sides" : sideSelection;
-    setStatus(`Auto-sorted ${typeLabel} · ${sideLabel} · ${direction === "clockwise" ? "clockwise" : "counterclockwise"}.`);
+    const methodLabel = method === "angle" ? "by angle" : "by position";
+    setStatus(`Auto-sorted ${typeLabel} · ${sideLabel} · ${methodLabel} · ${direction === "clockwise" ? "clockwise" : "counterclockwise"}.`);
     scheduleAutoSave();
   }
 

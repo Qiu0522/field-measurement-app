@@ -1581,7 +1581,8 @@ button {
   font: inherit;
 }
 
-.autoSortDirection {
+.autoSortDirection,
+.autoSortMethod {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
@@ -1590,7 +1591,8 @@ button {
   border: 0;
 }
 
-.autoSortDirection legend {
+.autoSortDirection legend,
+.autoSortMethod legend {
   grid-column: 1 / -1;
   margin-bottom: 2px;
   font-weight: 700;
@@ -1623,7 +1625,8 @@ button {
 }
 
 @media (max-width: 560px) {
-  .autoSortDirection {
+  .autoSortDirection,
+  .autoSortMethod {
     grid-template-columns: 1fr;
   }
 }
