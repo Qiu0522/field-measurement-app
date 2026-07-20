@@ -501,10 +501,18 @@ button {
   -webkit-overflow-scrolling: touch;
 }
 
-#drawingArea {
+/* Reserves the scaled scroll space so zoomed-in content stays reachable.
+   Its width/height are set in JS (applyZoom) to logicalSize * zoom + framing. */
+#drawingSizer {
   position: relative;
-  display: inline-block;
-  margin: 12px;
+  min-width: 100%;
+  min-height: 100%;
+}
+
+#drawingArea {
+  position: absolute;
+  top: 12px;
+  left: 12px;
   border: 1px solid #b8bbc0;
   background: white;
   transform-origin: top left;

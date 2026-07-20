@@ -18,7 +18,7 @@
   cached copies are cleared and every device picks up the new version.
 */
 
-const CACHE_VERSION = "field-measurement-combined-v1-v2-12";
+const CACHE_VERSION = "field-measurement-combined-v1-v2-14-zoom-scroll";
 const CACHE_NAME = CACHE_VERSION;
 
 // Same-origin app shell, relative to the service worker location.

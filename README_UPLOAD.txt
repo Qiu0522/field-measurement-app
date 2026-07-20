@@ -1,4 +1,15 @@
-FIELD MEASUREMENT VERSION 6.6
+FIELD MEASUREMENT VERSION 6.8.1
+
+VERSION 6.8.1 — IMPORTABLE WORKSPACE JSON + CACHE UPDATE
+- Workspace > Export JSON now exports the same complete portable work-file
+  format as Library > Export File, including the PDF and editable project state.
+- Workspace JSON downloads use the .fmfile.json suffix and can be opened with
+  Library > Import File.
+- sw.js CACHE_VERSION bumped to v1-v2-13-importable-json so installed devices
+  replace the older cached workspace.js and index.html.
+- Service-worker registration now checks sw.js without relying on the browser's
+  HTTP cache, making deployed updates more reliable on iPad/Safari.
+- Existing saved projects and folders are not changed.
 
 VERSION 6.8 — EXPORT JSON, PDF LABEL DEFAULT, FIND POINT BY LABEL, MOVE TO FOLDER
 - Export menu now includes Export JSON alongside Export CSV and Export PDF.

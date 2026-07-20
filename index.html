@@ -109,7 +109,7 @@
         <button id="manualSaveBtn" class="toolbarButton saveButton" type="button"><svg class="uiIcon" viewBox="0 0 24 24"><path d="M5 3h12l2 2v16H5zM8 3v6h8V3M8 21v-8h8v8"/></svg>Save</button>
         <details class="exportMenu">
           <summary class="toolbarButton"><svg class="uiIcon" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M5 20h14"/></svg>Export</summary>
-          <div class="exportMenuPanel"><button id="exportCsvBtn" type="button">Export CSV</button><button id="exportPdfBtn" type="button">Export PDF</button><button id="exportJsonBtn" type="button">Export JSON</button></div>
+          <div class="exportMenuPanel"><button id="exportCsvBtn" type="button">Export CSV</button><button id="exportPdfBtn" type="button">Export PDF</button><button id="exportJsonBtn" type="button">Export File</button></div>
         </details>
       </div>
 
@@ -185,10 +185,12 @@
     </div>
 
     <div id="drawingWrapper">
-      <div id="drawingArea">
-        <img id="drawingImage" alt="Drawing" class="hidden">
-        <canvas id="pdfCanvas" class="hidden"></canvas>
-        <canvas id="commentCanvas"></canvas>
+      <div id="drawingSizer">
+        <div id="drawingArea">
+          <img id="drawingImage" alt="Drawing" class="hidden">
+          <canvas id="pdfCanvas" class="hidden"></canvas>
+          <canvas id="commentCanvas"></canvas>
+        </div>
       </div>
     </div>
     <div id="noSideBanner" class="noSideBanner hidden">
@@ -642,9 +644,11 @@
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-        navigator.serviceWorker.register("sw.js").catch(error => {
-          console.warn("Service worker registration failed:", error);
-        });
+        navigator.serviceWorker.register("sw.js", { updateViaCache: "none" })
+          .then(registration => registration.update())
+          .catch(error => {
+            console.warn("Service worker registration failed:", error);
+          });
       });
     }
   </script>

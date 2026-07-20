@@ -160,6 +160,7 @@ const Workspace = (() => {
     els.status = document.getElementById("status");
 
     els.drawingWrapper = document.getElementById("drawingWrapper");
+    els.drawingSizer = document.getElementById("drawingSizer");
     els.drawingArea = document.getElementById("drawingArea");
     els.drawingImage = document.getElementById("drawingImage");
     els.pdfCanvas = document.getElementById("pdfCanvas");
@@ -582,12 +583,8 @@ const Workspace = (() => {
       const kind = pendingExportKind;
       pendingExportTypes = null;
       pendingExportKind = null;
-      if (types) {
-        if (kind === "json") {
-          proceedExportJSON(types);
-        } else {
-          proceedExportCSV(types);
-        }
+      if (types && kind === "csv") {
+        proceedExportCSV(types);
       }
     });
     els.noSideBanner.addEventListener("click", jumpToNextNoSide);
@@ -3618,76 +3615,45 @@ const Workspace = (() => {
     });
   }
 
-  function exportJSON() {
-    const exportTypes = dataTypes.filter(dataType =>
-      dataType.export &&
-      points.some(point => point.dataId === dataType.id && !point.excluded)
-    );
-
-    if (!exportTypes.length) {
-      setStatus("No points to export.");
+  async function exportJSON() {
+    if (!project) {
+      setStatus("No file is open.");
       return;
     }
 
-    const noSideCount = points.filter(point =>
-      !point.excluded &&
-      !(point.assignedSide || "") &&
-      exportTypes.some(dt => dt.id === point.dataId)
-    ).length;
+    try {
+      // Save the latest workspace state before creating the portable file.
+      // This makes Workspace > Export JSON use the same format as
+      // Library > Export File, so it can be opened through Import File.
+      await persistProjectState();
+      SaveController.markSaved();
 
-    if (noSideCount > 0) {
-      pendingExportTypes = exportTypes;
-      pendingExportKind = "json";
-      els.noSideModalText.textContent =
-        `${noSideCount} measurement${noSideCount === 1 ? "" : "s"} have no Side. Resolve now?`;
-      els.noSideModal.classList.remove("hidden");
-      return;
+      const data = await ProjectDB.exportProject(project.id);
+
+      openFileNameModal("Export File", project.name || "measurements", chosen => {
+        if (!chosen) return;
+
+        let fileName = chosen;
+        const lowerName = fileName.toLowerCase();
+        if (!lowerName.endsWith(".fmfile.json")) {
+          fileName = lowerName.endsWith(".json")
+            ? fileName.slice(0, -5) + ".fmfile.json"
+            : fileName + ".fmfile.json";
+        }
+
+        downloadBlob(
+          new Blob([JSON.stringify(data)], { type: "application/json;charset=utf-8" }),
+          fileName
+        );
+
+        setStatus("Exported an importable work file.");
+      });
+    } catch (error) {
+      setStatus("Export failed.");
+      alert("Export failed: " + (ProjectDB.explainError
+        ? ProjectDB.explainError(error)
+        : (error?.message || String(error))));
     }
-
-    proceedExportJSON(exportTypes);
-  }
-
-  function proceedExportJSON(exportTypes) {
-    exportTypes.forEach(dataType => recalculateDataTypeOrder(dataType.id));
-
-    openFileNameModal("Export JSON", project?.name || "measurements", chosen => {
-      if (!chosen) return;
-
-      const fileName =
-        chosen.toLowerCase().endsWith(".json") ? chosen : chosen + ".json";
-
-      const data = {
-        project: project?.name || "measurements",
-        exportedAt: new Date().toISOString(),
-        dataTypes: exportTypes.map(dataType => ({
-          id: dataType.id,
-          name: dataType.name,
-          color: dataType.color,
-          points: getOrderedPoints(dataType.id).map(item => {
-            const point = item.point;
-            const notes = [];
-            if (point.moveDistance > 80) {
-              notes.push("Point moved a large distance; check order");
-            } else if (point.moved) {
-              notes.push("Point moved");
-            }
-            return {
-              side: item.side || "Unassigned",
-              seq: item.seq,
-              measurement: point.measurement,
-              x: point.x,
-              y: point.y,
-              warning: notes.join("; ")
-            };
-          })
-        }))
-      };
-
-      downloadBlob(
-        new Blob([JSON.stringify(data, null, 2)], { type: "application/json;charset=utf-8" }),
-        fileName
-      );
-    });
   }
 
   function exportPDF() {
@@ -4205,6 +4171,15 @@ const Workspace = (() => {
   function applyZoom() {
     els.drawingArea.style.transform = `scale(${zoomLevel})`;
     els.drawingArea.style.setProperty("--inv-zoom", String(1 / zoomLevel));
+
+    // Reserve the scaled scroll space so zoomed-in content stays reachable
+    // via horizontal/vertical scrolling. 24 = 12px top/left + 12px right/bottom.
+    if (els.drawingSizer) {
+      const logicalWidth = parseFloat(els.drawingArea.style.width) || 0;
+      const logicalHeight = parseFloat(els.drawingArea.style.height) || 0;
+      els.drawingSizer.style.width = (logicalWidth * zoomLevel + 24) + "px";
+      els.drawingSizer.style.height = (logicalHeight * zoomLevel + 24) + "px";
+    }
 
     if (els.zoomDisplay) {
       els.zoomDisplay.textContent = Math.round(zoomLevel * 100) + "%";
