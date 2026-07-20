@@ -1,5 +1,26 @@
 FIELD MEASUREMENT VERSION 6.6
 
+VERSION 6.8 — EXPORT JSON, PDF LABEL DEFAULT, FIND POINT BY LABEL, MOVE TO FOLDER
+- Export menu now includes Export JSON alongside Export CSV and Export PDF.
+  It writes the same points/side/seq/measurement data as CSV, grouped by
+  Data Type, as a downloadable .json file.
+- PDF export now always burns in the measurement value on each point label,
+  regardless of whether "Show Order Labels" is currently toggled on in the
+  workspace view. The on-screen toggle still works for live viewing; it just
+  no longer changes what gets exported to PDF.
+- Review ("Preview CSV") sidebar has a new search box: type a label (e.g. N3)
+  or a measurement value to filter the list live, or press Enter to jump
+  straight to the first match and flash it on the drawing.
+- Library: added "Move to Folder…" to the file/folder ⋯ menu. Lets you move
+  an existing work file or folder into any other folder (including newly
+  created ones) without drag-and-drop, which does not work reliably on
+  iPad/Safari. A folder cannot be moved into itself or one of its own
+  subfolders.
+- No changes to saved project/folder data structure — existing work files
+  open exactly as before.
+- sw.js CACHE_VERSION bumped to v1-v2-12 so installed iPads pick up this
+  update on their next online launch.
+
 VERSION 6.7 — TOOLBAR, ICONS, AND COLOUR SYSTEM
 - First row: Library and project name on the left; Zoom, Fit, Undo, Redo, Save, and Export on the right.
 - Second row: Data Type, Point, Lock, Order, Batch Side, Labels, and the Markup dropdown.

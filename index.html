@@ -109,7 +109,7 @@
         <button id="manualSaveBtn" class="toolbarButton saveButton" type="button"><svg class="uiIcon" viewBox="0 0 24 24"><path d="M5 3h12l2 2v16H5zM8 3v6h8V3M8 21v-8h8v8"/></svg>Save</button>
         <details class="exportMenu">
           <summary class="toolbarButton"><svg class="uiIcon" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M5 20h14"/></svg>Export</summary>
-          <div class="exportMenuPanel"><button id="exportCsvBtn" type="button">Export CSV</button><button id="exportPdfBtn" type="button">Export PDF</button></div>
+          <div class="exportMenuPanel"><button id="exportCsvBtn" type="button">Export CSV</button><button id="exportPdfBtn" type="button">Export PDF</button><button id="exportJsonBtn" type="button">Export JSON</button></div>
         </details>
       </div>
 
@@ -200,6 +200,9 @@
         <span>Preview CSV</span>
         <button id="closeReviewBtn" type="button" aria-label="Close">×</button>
       </div>
+      <div class="reviewSearchBar">
+        <input id="reviewSearchInput" type="text" inputmode="text" autocomplete="off" placeholder="Find point by label (e.g. N3)" />
+      </div>
       <div id="reviewList" class="reviewList"></div>
     </aside>
 
@@ -218,6 +221,7 @@
   <div id="libraryContextMenu" class="popupMenu hidden">
     <button id="renameLibraryAction" type="button">Rename</button>
     <button id="duplicateLibraryAction" type="button">Duplicate</button>
+    <button id="moveLibraryAction" type="button">Move to Folder…</button>
     <button id="exportFileAction" type="button">Export File</button>
     <button id="deleteLibraryAction" class="dangerText" type="button">Delete</button>
   </div>
@@ -229,6 +233,21 @@
       <div class="modalActions">
         <button id="cancelRenameBtn" type="button">Cancel</button>
         <button id="confirmRenameBtn" class="primaryButton" type="button">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="moveModal" class="modalBackdrop hidden">
+    <div class="modalCard moveModalCard">
+      <h2 id="moveModalTitle">Move to Folder</h2>
+      <div class="moveModalNav">
+        <button id="moveUpFolderBtn" type="button" disabled>⬆ Up</button>
+        <span id="moveModalPath" class="moveModalPath">Library</span>
+      </div>
+      <div id="moveModalList" class="moveModalList"></div>
+      <div class="modalActions">
+        <button id="cancelMoveBtn" type="button">Cancel</button>
+        <button id="confirmMoveHereBtn" class="primaryButton" type="button">Move Here</button>
       </div>
     </div>
   </div>

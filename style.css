@@ -656,6 +656,47 @@ button {
   gap: 10px;
 }
 
+.moveModalNav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.moveModalNav button {
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 6px 12px;
+  border: 1px solid #96999e;
+  border-radius: 7px;
+  background: white;
+}
+.moveModalNav button:disabled { opacity: .45; }
+.moveModalPath {
+  font-weight: 600;
+  color: var(--muted, #666);
+  overflow-wrap: anywhere;
+}
+.moveModalList {
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+  -webkit-overflow-scrolling: touch;
+}
+.moveModalRow {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 11px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 16px;
+}
+.moveModalRow:active { background: #f2f4f7; }
+.moveModalEmpty { color: var(--muted, #666); padding: 12px; margin: 0; }
+
 .modalActions {
   display: flex;
   gap: 9px;
@@ -1419,6 +1460,15 @@ button {
 .reviewHeader button {
   width: 34px; height: 34px; border: none; border-radius: 8px;
   background: rgba(0,0,0,.06); font-size: 20px; line-height: 1;
+}
+.reviewSearchBar { padding: 10px 14px 0; }
+.reviewSearchBar input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 15px;
 }
 .reviewList { flex: 1; overflow-y: auto; padding: 8px 10px; -webkit-overflow-scrolling: touch; }
 .reviewEmpty { color: var(--muted); padding: 12px; }

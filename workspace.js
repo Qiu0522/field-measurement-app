@@ -61,9 +61,11 @@ const Workspace = (() => {
   let noteDrag = null;
   let textNoteColor = "#ff0000";
   let reviewFilter = "all";
+  let reviewSearchTerm = "";
   let currentSide = "";
   let setPositionPoint = null;
   let pendingExportTypes = null;
+  let pendingExportKind = null;
   let workspaceMode = "measure";
 
   let measurementCallback = null;
@@ -140,6 +142,7 @@ const Workspace = (() => {
     els.reviewBtn = document.getElementById("reviewBtn");
     els.reviewSidebar = document.getElementById("reviewSidebar");
     els.reviewList = document.getElementById("reviewList");
+    els.reviewSearchInput = document.getElementById("reviewSearchInput");
     els.closeReviewBtn = document.getElementById("closeReviewBtn");
     els.orderBtn = document.getElementById("orderBtn");
     els.measureModeBtn = document.getElementById("measureModeBtn");
@@ -150,6 +153,7 @@ const Workspace = (() => {
     els.labelsBtn = document.getElementById("labelsBtn");
     els.exportCsvBtn = document.getElementById("exportCsvBtn");
     els.exportPdfBtn = document.getElementById("exportPdfBtn");
+    els.exportJsonBtn = document.getElementById("exportJsonBtn");
     els.manualSaveBtn = document.getElementById("manualSaveBtn");
 
     els.saveIndicator = document.getElementById("saveIndicator");
@@ -363,6 +367,20 @@ const Workspace = (() => {
 
     els.exportCsvBtn.addEventListener("click", exportCSV);
     els.exportPdfBtn.addEventListener("click", exportPDF);
+    els.exportJsonBtn.addEventListener("click", exportJSON);
+
+    if (els.reviewSearchInput) {
+      els.reviewSearchInput.addEventListener("input", () => {
+        reviewSearchTerm = els.reviewSearchInput.value.trim().toLowerCase();
+        renderReviewList();
+      });
+      els.reviewSearchInput.addEventListener("keydown", event => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          jumpToFirstReviewMatch();
+        }
+      });
+    }
 
     els.manualSaveBtn.addEventListener("click", async () => {
       els.manualSaveBtn.disabled = true;
@@ -555,13 +573,22 @@ const Workspace = (() => {
     els.assignSideBtn.addEventListener("click", () => {
       els.noSideModal.classList.add("hidden");
       pendingExportTypes = null;
+      pendingExportKind = null;
       jumpToNextNoSide();
     });
     els.exportAnywayBtn.addEventListener("click", () => {
       els.noSideModal.classList.add("hidden");
       const types = pendingExportTypes;
+      const kind = pendingExportKind;
       pendingExportTypes = null;
-      if (types) proceedExportCSV(types);
+      pendingExportKind = null;
+      if (types) {
+        if (kind === "json") {
+          proceedExportJSON(types);
+        } else {
+          proceedExportCSV(types);
+        }
+      }
     });
     els.noSideBanner.addEventListener("click", jumpToNextNoSide);
 
@@ -3516,6 +3543,7 @@ const Workspace = (() => {
 
     if (noSideCount > 0) {
       pendingExportTypes = exportTypes;
+      pendingExportKind = "csv";
       els.noSideModalText.textContent =
         `${noSideCount} measurement${noSideCount === 1 ? "" : "s"} have no Side. Resolve now?`;
       els.noSideModal.classList.remove("hidden");
@@ -3585,6 +3613,78 @@ const Workspace = (() => {
 
       downloadBlob(
         new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" }),
+        fileName
+      );
+    });
+  }
+
+  function exportJSON() {
+    const exportTypes = dataTypes.filter(dataType =>
+      dataType.export &&
+      points.some(point => point.dataId === dataType.id && !point.excluded)
+    );
+
+    if (!exportTypes.length) {
+      setStatus("No points to export.");
+      return;
+    }
+
+    const noSideCount = points.filter(point =>
+      !point.excluded &&
+      !(point.assignedSide || "") &&
+      exportTypes.some(dt => dt.id === point.dataId)
+    ).length;
+
+    if (noSideCount > 0) {
+      pendingExportTypes = exportTypes;
+      pendingExportKind = "json";
+      els.noSideModalText.textContent =
+        `${noSideCount} measurement${noSideCount === 1 ? "" : "s"} have no Side. Resolve now?`;
+      els.noSideModal.classList.remove("hidden");
+      return;
+    }
+
+    proceedExportJSON(exportTypes);
+  }
+
+  function proceedExportJSON(exportTypes) {
+    exportTypes.forEach(dataType => recalculateDataTypeOrder(dataType.id));
+
+    openFileNameModal("Export JSON", project?.name || "measurements", chosen => {
+      if (!chosen) return;
+
+      const fileName =
+        chosen.toLowerCase().endsWith(".json") ? chosen : chosen + ".json";
+
+      const data = {
+        project: project?.name || "measurements",
+        exportedAt: new Date().toISOString(),
+        dataTypes: exportTypes.map(dataType => ({
+          id: dataType.id,
+          name: dataType.name,
+          color: dataType.color,
+          points: getOrderedPoints(dataType.id).map(item => {
+            const point = item.point;
+            const notes = [];
+            if (point.moveDistance > 80) {
+              notes.push("Point moved a large distance; check order");
+            } else if (point.moved) {
+              notes.push("Point moved");
+            }
+            return {
+              side: item.side || "Unassigned",
+              seq: item.seq,
+              measurement: point.measurement,
+              x: point.x,
+              y: point.y,
+              warning: notes.join("; ")
+            };
+          })
+        }))
+      };
+
+      downloadBlob(
+        new Blob([JSON.stringify(data, null, 2)], { type: "application/json;charset=utf-8" }),
         fileName
       );
     });
@@ -3691,10 +3791,10 @@ const Workspace = (() => {
 
         const measurement = point.measurement || String(point.number);
 
-        const label =
-          showOrderLabels && point.assignedSide && point.assignedSeq
-            ? `${point.assignedSide}${point.assignedSeq}`
-            : measurement;
+        // PDF export always shows measurement data, regardless of the
+        // on-screen "Show Order Labels" toggle (which only affects the
+        // live workspace view).
+        const label = measurement;
 
         // White outline first, then the coloured text on top.
         context.lineWidth = Math.max(2, labelFontSize / 5);
@@ -3869,6 +3969,8 @@ const Workspace = (() => {
     if (!els.reviewSidebar) return;
 
     if (els.reviewSidebar.classList.contains("hidden")) {
+      reviewSearchTerm = "";
+      if (els.reviewSearchInput) els.reviewSearchInput.value = "";
       renderReviewList();
       els.reviewSidebar.classList.remove("hidden");
     } else {
@@ -3935,6 +4037,13 @@ const Workspace = (() => {
       ? typesWithPoints
       : typesWithPoints.filter(dt => dt.id === reviewFilter);
 
+    const term = reviewSearchTerm;
+
+    const matchesTerm = (tagText, valText) =>
+      !term ||
+      tagText.toLowerCase().includes(term) ||
+      valText.toLowerCase().includes(term);
+
     shownTypes.forEach(dt => {
       const section = document.createElement("div");
       section.className = "reviewSection";
@@ -3946,19 +4055,26 @@ const Workspace = (() => {
       section.appendChild(header);
 
       const list = getOrderedPoints(dt.id);
+      let visibleRows = 0;
 
       list.forEach(item => {
+        const tagText = (item.side || "U") + item.seq;
+        const valText = item.point.measurement || "(empty)";
+        if (!matchesTerm(tagText, valText)) return;
+
+        visibleRows += 1;
+
         const row = document.createElement("button");
         row.type = "button";
         row.className = "reviewRow";
 
         const tag = document.createElement("span");
         tag.className = "reviewTag";
-        tag.textContent = (item.side || "U") + item.seq;
+        tag.textContent = tagText;
 
         const val = document.createElement("span");
         val.className = "reviewVal";
-        val.textContent = item.point.measurement || "(empty)";
+        val.textContent = valText;
 
         row.appendChild(tag);
         row.appendChild(val);
@@ -3969,13 +4085,19 @@ const Workspace = (() => {
 
       // Excluded points for this type, greyed at the bottom of the section.
       const excluded = points.filter(p => p.dataId === dt.id && p.excluded);
-      if (excluded.length) {
+      const visibleExcluded = excluded.filter(point =>
+        matchesTerm("—", point.measurement || "(empty)")
+      );
+
+      if (visibleExcluded.length) {
         const exHeader = document.createElement("div");
         exHeader.className = "reviewTypeHeader reviewExcludedHeader";
         exHeader.textContent = "Excluded";
         section.appendChild(exHeader);
 
-        excluded.forEach(point => {
+        visibleExcluded.forEach(point => {
+          visibleRows += 1;
+
           const row = document.createElement("button");
           row.type = "button";
           row.className = "reviewRow reviewExcludedRow";
@@ -3996,8 +4118,61 @@ const Workspace = (() => {
         });
       }
 
+      // While searching, skip data types with no matching points at all.
+      if (term && visibleRows === 0) return;
+
       container.appendChild(section);
     });
+
+    if (term && !container.querySelector(".reviewRow")) {
+      const empty = document.createElement("p");
+      empty.className = "reviewEmpty";
+      empty.textContent = `No point found matching "${els.reviewSearchInput ? els.reviewSearchInput.value.trim() : term}".`;
+      container.appendChild(empty);
+    }
+  }
+
+  // Jumps straight to the first point whose label (e.g. "N3") or
+  // measurement matches the review search box, honouring the active
+  // data-type filter chip. Triggered by pressing Enter in that box.
+  function jumpToFirstReviewMatch() {
+    const term = reviewSearchTerm;
+    if (!term) return;
+
+    const typesWithPoints = dataTypes.filter(dt =>
+      points.some(p => p.dataId === dt.id)
+    );
+    const shownTypes = reviewFilter === "all"
+      ? typesWithPoints
+      : typesWithPoints.filter(dt => dt.id === reviewFilter);
+
+    for (const dt of shownTypes) {
+      const list = getOrderedPoints(dt.id);
+      const match = list.find(item => {
+        const tag = ((item.side || "U") + item.seq).toLowerCase();
+        const val = String(item.point.measurement || "").toLowerCase();
+        return tag.includes(term) || val.includes(term);
+      });
+      if (match) {
+        jumpToPoint(match.point);
+        setStatus(`Found ${(match.side || "U") + match.seq}.`);
+        return;
+      }
+    }
+
+    for (const dt of shownTypes) {
+      const excluded = points.filter(p => p.dataId === dt.id && p.excluded);
+      const match = excluded.find(point =>
+        String(point.measurement || "").toLowerCase().includes(term)
+      );
+      if (match) {
+        jumpToPoint(match);
+        setStatus("Found an excluded point.");
+        return;
+      }
+    }
+
+    setStatus("No matching point found.");
   }
 
   function jumpToPoint(point) {
