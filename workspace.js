@@ -160,7 +160,6 @@ const Workspace = (() => {
     els.status = document.getElementById("status");
 
     els.drawingWrapper = document.getElementById("drawingWrapper");
-    els.drawingSizer = document.getElementById("drawingSizer");
     els.drawingArea = document.getElementById("drawingArea");
     els.drawingImage = document.getElementById("drawingImage");
     els.pdfCanvas = document.getElementById("pdfCanvas");
@@ -4172,14 +4171,20 @@ const Workspace = (() => {
     els.drawingArea.style.transform = `scale(${zoomLevel})`;
     els.drawingArea.style.setProperty("--inv-zoom", String(1 / zoomLevel));
 
-    // Reserve the scaled scroll space so zoomed-in content stays reachable
-    // via horizontal/vertical scrolling. 24 = 12px top/left + 12px right/bottom.
-    if (els.drawingSizer) {
-      const logicalWidth = parseFloat(els.drawingArea.style.width) || 0;
-      const logicalHeight = parseFloat(els.drawingArea.style.height) || 0;
-      els.drawingSizer.style.width = (logicalWidth * zoomLevel + 24) + "px";
-      els.drawingSizer.style.height = (logicalHeight * zoomLevel + 24) + "px";
-    }
+    // A CSS transform scales the drawing visually but does NOT enlarge its
+    // layout box, so the scroll container never reserves room for the zoomed
+    // content and the right/bottom edges become unreachable. We compensate by
+    // adding right/bottom margin equal to the extra scaled size (the base 12px
+    // frame is kept). transform-origin is top-left, so content grows down-right
+    // from a fixed corner and this margin exactly covers it. offsetWidth is the
+    // unscaled layout size, so this works for PDF, image and blank drawings.
+    const baseFrame = 12;
+    const layoutWidth = els.drawingArea.offsetWidth;
+    const layoutHeight = els.drawingArea.offsetHeight;
+    const extraRight = Math.max(0, layoutWidth * (zoomLevel - 1));
+    const extraBottom = Math.max(0, layoutHeight * (zoomLevel - 1));
+    els.drawingArea.style.marginRight = (baseFrame + extraRight) + "px";
+    els.drawingArea.style.marginBottom = (baseFrame + extraBottom) + "px";
 
     if (els.zoomDisplay) {
       els.zoomDisplay.textContent = Math.round(zoomLevel * 100) + "%";
