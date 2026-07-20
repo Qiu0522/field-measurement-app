@@ -160,6 +160,7 @@ const Workspace = (() => {
     els.status = document.getElementById("status");
 
     els.drawingWrapper = document.getElementById("drawingWrapper");
+    els.drawingSizer = document.getElementById("drawingSizer");
     els.drawingArea = document.getElementById("drawingArea");
     els.drawingImage = document.getElementById("drawingImage");
     els.pdfCanvas = document.getElementById("pdfCanvas");
@@ -4171,20 +4172,16 @@ const Workspace = (() => {
     els.drawingArea.style.transform = `scale(${zoomLevel})`;
     els.drawingArea.style.setProperty("--inv-zoom", String(1 / zoomLevel));
 
-    // A CSS transform scales the drawing visually but does NOT enlarge its
-    // layout box, so the scroll container never reserves room for the zoomed
-    // content and the right/bottom edges become unreachable. We compensate by
-    // adding right/bottom margin equal to the extra scaled size (the base 12px
-    // frame is kept). transform-origin is top-left, so content grows down-right
-    // from a fixed corner and this margin exactly covers it. offsetWidth is the
-    // unscaled layout size, so this works for PDF, image and blank drawings.
-    const baseFrame = 12;
-    const layoutWidth = els.drawingArea.offsetWidth;
-    const layoutHeight = els.drawingArea.offsetHeight;
-    const extraRight = Math.max(0, layoutWidth * (zoomLevel - 1));
-    const extraBottom = Math.max(0, layoutHeight * (zoomLevel - 1));
-    els.drawingArea.style.marginRight = (baseFrame + extraRight) + "px";
-    els.drawingArea.style.marginBottom = (baseFrame + extraBottom) + "px";
+    // Reserve the scaled scroll space so zoomed-in content is reachable on both
+    // axes in every browser. offsetWidth/Height are the unscaled layout size and
+    // are reliable for PDF, image and blank drawings; 24 = 12px frame on each of
+    // the two sides (left/right, top/bottom).
+    if (els.drawingSizer) {
+      const layoutWidth = els.drawingArea.offsetWidth;
+      const layoutHeight = els.drawingArea.offsetHeight;
+      els.drawingSizer.style.width = (layoutWidth * zoomLevel + 24) + "px";
+      els.drawingSizer.style.height = (layoutHeight * zoomLevel + 24) + "px";
+    }
 
     if (els.zoomDisplay) {
       els.zoomDisplay.textContent = Math.round(zoomLevel * 100) + "%";

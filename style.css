@@ -501,8 +501,11 @@ button {
   -webkit-overflow-scrolling: touch;
 }
 
-/* Reserves the scaled scroll space so zoomed-in content stays reachable.
-   Its width/height are set in JS (applyZoom) to logicalSize * zoom + framing. */
+/* Reserves the real scaled scroll space on BOTH axes so zoomed-in content stays
+   reachable. Uses an explicitly-sized in-flow block (set in JS: applyZoom), which
+   every browser counts toward scroll overflow — unlike CSS transforms, whose
+   overflow Safari/Firefox ignore. The drawingArea is taken out of flow so only
+   this sizer drives the scrollable area. */
 #drawingSizer {
   position: relative;
   min-width: 100%;
