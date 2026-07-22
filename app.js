@@ -902,6 +902,96 @@ const App = (() => {
     }
   }
 
+  /*
+    Some older versions of this app could export a "data only" JSON file:
+    no format tag, no PDF/image, just { project, exportedAt, dataTypes }
+    where each dataTypes[].points held { side, seq, measurement, x, y, warning }.
+    Newer versions only understand the "field-measurement-file" wrapper, so
+    those legacy files used to fail on both Import and Restore. Detect and
+    convert them here so they load like any other single-file export.
+  */
+  function isLegacyDataOnlyExport(data) {
+    return !!(
+      data &&
+      typeof data.project === "string" &&
+      Array.isArray(data.dataTypes) &&
+      data.dataTypes.every(dt => dt && typeof dt.id === "string" && Array.isArray(dt.points))
+    );
+  }
+
+  function convertLegacyDataExport(data, folderId) {
+    const now = Date.now();
+    const points = [];
+    let maxX = 0;
+    let maxY = 0;
+
+    const dataTypes = data.dataTypes.map(dt => {
+      const legacyPoints = Array.isArray(dt.points) ? dt.points : [];
+
+      legacyPoints.forEach((p, index) => {
+        const x = Number(p.x) || 0;
+        const y = Number(p.y) || 0;
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
+
+        points.push({
+          uid: "point_" + now + "_" + Math.random().toString(16).slice(2) + "_" + points.length,
+          dataId: dt.id,
+          number: index + 1,
+          x,
+          y,
+          measurement: p.measurement != null ? String(p.measurement) : "",
+          moved: false,
+          moveDistance: 0,
+          excluded: false,
+          assignedSide: p.side || "",
+          assignedSeq: p.seq || ""
+        });
+      });
+
+      return {
+        id: dt.id,
+        name: dt.name || "Data",
+        color: dt.color || "#000000",
+        counter: legacyPoints.length + 1,
+        export: true,
+        ordered: false,
+        direction: "clockwise",
+        lockedSides: []
+      };
+    });
+
+    return {
+      id: ProjectDB.makeId("project"),
+      name: data.project || "Imported file",
+      folderId: folderId || null,
+      kind: "blank",
+      createdAt: now,
+      updatedAt: now,
+      pdfData: null,
+      _assetSaved: true,
+      // No image was stored in this old export format — give the canvas
+      // enough room to fit every point that was recorded.
+      blankWidth: Math.max(2400, Math.ceil(maxX + 200)),
+      blankHeight: Math.max(1600, Math.ceil(maxY + 200)),
+      state: {
+        points,
+        dataTypes,
+        textNotes: [],
+        selectedDataId: dataTypes[0]?.id || null,
+        pointMode: "lock",
+        showOrderLabels: false,
+        zoomLevel: 1,
+        labelFontSize: 30,
+        commentImageData: "",
+        scrollLeft: 0,
+        scrollTop: 0,
+        currentPdfPage: 1,
+        pageStates: {}
+      }
+    };
+  }
+
   async function handleImportFile(event) {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -911,6 +1001,22 @@ const App = (() => {
       data = JSON.parse(await file.text());
     } catch (error) {
       alert("That file could not be read.");
+      return;
+    }
+
+    if (isLegacyDataOnlyExport(data)) {
+      try {
+        const project = convertLegacyDataExport(data, currentFolderId);
+        await ProjectDB.saveProject(project);
+        await refreshLibrary();
+        alert(
+          `Imported "${project.name}" into this folder.\n\n` +
+          "This was an older data-only export with no background image, " +
+          "so it was placed on a blank drawing sized to fit the measurement points."
+        );
+      } catch (error) {
+        alert("Import failed: " + explainDbError(error));
+      }
       return;
     }
 
@@ -1036,6 +1142,12 @@ const App = (() => {
       backup = JSON.parse(await file.text());
     } catch (error) {
       alert("That file could not be read as a backup.");
+      return;
+    }
+
+    if (isLegacyDataOnlyExport(backup) ||
+        ["field-measurement-file", "field-measurement-files"].includes(backup?.format)) {
+      alert("That is a single work file export, not a whole-library backup. Use \"Import File\" instead.");
       return;
     }
 

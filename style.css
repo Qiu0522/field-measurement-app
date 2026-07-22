@@ -522,6 +522,12 @@ button {
   -webkit-user-select: none;
   user-select: none;
   -webkit-touch-callout: none;
+  /* Keep this on its own GPU layer at all times, not just once a transform
+     first changes. Without this, Safari/iPadOS promotes the layer lazily at
+     the start of a pinch or scroll gesture, which shows up as a stutter
+     right when the gesture begins — worse the larger the PDF/image is. */
+  will-change: transform;
+  backface-visibility: hidden;
 }
 
 #drawingImage,

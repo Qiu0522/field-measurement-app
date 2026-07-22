@@ -26,6 +26,8 @@ const Workspace = (() => {
   let pinchActive = false;
   let pinchStartDist = 0;
   let pinchStartZoom = 1;
+  let latestPinchEvent = null;
+  let pinchFrameRequested = false;
 
   let clickStartX = 0;
   let clickStartY = 0;
@@ -478,6 +480,8 @@ const Workspace = (() => {
       abortActiveInteraction();
       pinchStartDist = touchDistance(event.touches[0], event.touches[1]);
       pinchStartZoom = zoomLevel;
+      latestPinchEvent = null;
+      pinchFrameRequested = false;
       event.preventDefault();
     }, { passive: false });
 
@@ -485,35 +489,32 @@ const Workspace = (() => {
       if (!pinchActive || event.touches.length !== 2) return;
       event.preventDefault();
 
-      const wrapper = els.drawingWrapper;
-      const rect = wrapper.getBoundingClientRect();
-      const dist = touchDistance(event.touches[0], event.touches[1]);
-      if (pinchStartDist <= 0) return;
+      /*
+        iOS can fire touchmove faster than the screen repaints. Doing the
+        rect/offset reads and the transform/scroll writes on every single
+        event forces a synchronous layout each time (layout thrashing),
+        which is what makes the pinch feel like it's lagging behind the
+        fingers. Instead, just remember the latest event and do the actual
+        work at most once per animation frame.
+      */
+      latestPinchEvent = event;
+      if (pinchFrameRequested) return;
+      pinchFrameRequested = true;
 
-      const oldZoom = zoomLevel;
-      const newZoom = Math.max(
-        0.3,
-        Math.min(5, Math.round(pinchStartZoom * (dist / pinchStartDist) * 100) / 100)
-      );
-      if (newZoom === oldZoom) return;
-
-      const midX = (event.touches[0].clientX + event.touches[1].clientX) / 2 - rect.left;
-      const midY = (event.touches[0].clientY + event.touches[1].clientY) / 2 - rect.top;
-
-      const contentX = (wrapper.scrollLeft + midX) / oldZoom;
-      const contentY = (wrapper.scrollTop + midY) / oldZoom;
-
-      zoomLevel = newZoom;
-      applyZoom();
-
-      wrapper.scrollLeft = contentX * newZoom - midX;
-      wrapper.scrollTop = contentY * newZoom - midY;
+      requestAnimationFrame(() => {
+        pinchFrameRequested = false;
+        if (!pinchActive || !latestPinchEvent) return;
+        applyPinchZoom(latestPinchEvent);
+        latestPinchEvent = null;
+      });
     }, { passive: false });
 
     const endPinch = event => {
       if (!pinchActive) return;
       if (event.touches.length < 2) {
         pinchActive = false;
+        latestPinchEvent = null;
+        pinchFrameRequested = false;
         scheduleAutoSave();
       }
     };
@@ -4227,6 +4228,32 @@ const Workspace = (() => {
     labelFontSize = 30;
     applyLabelFontSize();
     scheduleAutoSave();
+  }
+
+  function applyPinchZoom(event) {
+    const wrapper = els.drawingWrapper;
+    const rect = wrapper.getBoundingClientRect();
+    const dist = touchDistance(event.touches[0], event.touches[1]);
+    if (pinchStartDist <= 0) return;
+
+    const oldZoom = zoomLevel;
+    const newZoom = Math.max(
+      0.3,
+      Math.min(5, Math.round(pinchStartZoom * (dist / pinchStartDist) * 100) / 100)
+    );
+    if (newZoom === oldZoom) return;
+
+    const midX = (event.touches[0].clientX + event.touches[1].clientX) / 2 - rect.left;
+    const midY = (event.touches[0].clientY + event.touches[1].clientY) / 2 - rect.top;
+
+    const contentX = (wrapper.scrollLeft + midX) / oldZoom;
+    const contentY = (wrapper.scrollTop + midY) / oldZoom;
+
+    zoomLevel = newZoom;
+    applyZoom();
+
+    wrapper.scrollLeft = contentX * newZoom - midX;
+    wrapper.scrollTop = contentY * newZoom - midY;
   }
 
   function touchDistance(a, b) {
