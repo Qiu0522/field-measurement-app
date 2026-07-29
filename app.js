@@ -993,51 +993,67 @@ const App = (() => {
   }
 
   async function handleImportFile(event) {
-    const file = event.target.files?.[0];
-    if (!file) return;
+    const fileList = Array.from(event.target.files || []);
+    if (!fileList.length) return;
 
-    let data;
-    try {
-      data = JSON.parse(await file.text());
-    } catch (error) {
-      alert("That file could not be read.");
-      return;
-    }
+    const importedNames = [];
+    const failures = [];
 
-    if (isLegacyDataOnlyExport(data)) {
+    for (const file of fileList) {
+      let data;
       try {
-        const project = convertLegacyDataExport(data, currentFolderId);
-        await ProjectDB.saveProject(project);
-        await refreshLibrary();
-        alert(
-          `Imported "${project.name}" into this folder.\n\n` +
-          "This was an older data-only export with no background image, " +
-          "so it was placed on a blank drawing sized to fit the measurement points."
-        );
+        data = JSON.parse(await file.text());
       } catch (error) {
-        alert("Import failed: " + explainDbError(error));
+        failures.push(`${file.name}: could not be read`);
+        continue;
       }
-      return;
+
+      if (isLegacyDataOnlyExport(data)) {
+        try {
+          const project = convertLegacyDataExport(data, currentFolderId);
+          await ProjectDB.saveProject(project);
+          importedNames.push(project.name);
+        } catch (error) {
+          failures.push(`${file.name}: ${explainDbError(error)}`);
+        }
+        continue;
+      }
+
+      if (!data || !["field-measurement-file", "field-measurement-files"].includes(data.format)) {
+        failures.push(`${file.name}: not a recognized export file`);
+        continue;
+      }
+
+      try {
+        const files = data.format === "field-measurement-files" && Array.isArray(data.files)
+          ? data.files : [data];
+        for (const fileData of files) {
+          const project = await ProjectDB.importProject(fileData, currentFolderId);
+          importedNames.push(project.name);
+        }
+      } catch (error) {
+        failures.push(`${file.name}: ${explainDbError(error)}`);
+      }
     }
 
-    if (!data || !["field-measurement-file", "field-measurement-files"].includes(data.format)) {
-      alert("That is not a single-file export. For a whole-library backup file, use Restore instead.");
-      return;
-    }
-
-    try {
-      const files = data.format === "field-measurement-files" && Array.isArray(data.files)
-        ? data.files : [data];
-      const imported = [];
-      for (const fileData of files) {
-        imported.push(await ProjectDB.importProject(fileData, currentFolderId));
-      }
+    if (importedNames.length) {
       await refreshLibrary();
-      alert(imported.length === 1
-        ? `Imported "${imported[0].name}" into this folder.`
-        : `Imported ${imported.length} work files into this folder.`);
-    } catch (error) {
-      alert("Import failed: " + explainDbError(error));
+    }
+
+    const messageParts = [];
+    if (importedNames.length === 1) {
+      messageParts.push(`Imported "${importedNames[0]}" into this folder.`);
+    } else if (importedNames.length > 1) {
+      messageParts.push(`Imported ${importedNames.length} work files into this folder.`);
+    }
+    if (failures.length) {
+      messageParts.push(
+        (importedNames.length ? "\n\n" : "") +
+        `${failures.length} file(s) failed:\n` + failures.join("\n")
+      );
+    }
+    if (messageParts.length) {
+      alert(messageParts.join(""));
     }
   }
 
