@@ -1658,6 +1658,18 @@ button {
   border: 0;
 }
 
+.autoSortNoDataMessage {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border: 1px solid #f3c98b;
+  border-radius: 10px;
+  background: #fff6e8;
+  color: #8a5a11;
+  font-size: 13px;
+  font-weight: 600;
+}
+.autoSortNoDataMessage.hidden { display: none; }
+
 .autoSortDirection legend,
 .autoSortMethod legend {
   grid-column: 1 / -1;
@@ -2240,3 +2252,198 @@ button {
   font-weight: 600;
   justify-content: center;
 }
+
+
+/* ===== Merged from New Version: Auto Sort Review ===== */
+/* Auto Sort review — v18 */
+.sortReviewBackdrop {
+  align-items: stretch;
+  justify-content: flex-end;
+  padding: 12px;
+  background: linear-gradient(90deg, rgba(15, 23, 42, .03), rgba(15, 23, 42, .16));
+  pointer-events: none;
+}
+.autoSortReviewCard {
+  pointer-events: auto;
+  width: min(400px, 42vw, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  margin: 0;
+  overflow: auto;
+  padding: 0;
+  border: 1px solid rgba(148, 163, 184, .35);
+  border-radius: 22px;
+  background: rgba(250, 251, 253, .97);
+  box-shadow: 0 24px 70px rgba(15, 23, 42, .24), 0 2px 8px rgba(15, 23, 42, .08);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+.sortReviewHeader {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 13px;
+  padding: 20px 20px 17px;
+  border-bottom: 1px solid rgba(148, 163, 184, .22);
+  background: linear-gradient(145deg, rgba(255,255,255,.96), rgba(245,248,252,.94));
+}
+.sortReviewHeaderIcon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  color: #fff;
+  background: linear-gradient(145deg, #2563eb, #4f46e5);
+  box-shadow: 0 9px 22px rgba(37, 99, 235, .28);
+  font-size: 20px;
+  font-weight: 900;
+}
+.autoSortReviewSummary { display: grid; gap: 7px; min-width: 0; }
+.sortReviewTitleRow { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.sortReviewTitleRow > strong { color: #172033; font-size: 1.18rem; letter-spacing: -.02em; }
+.sortReviewReadyBadge { flex: none; padding: 5px 8px; border-radius: 999px; color: #2855b8; background: #e9f0ff; font-size: 11px; font-weight: 800; }
+.sortReviewContext { color: #667085; font-size: 12px; line-height: 1.4; }
+.sortReviewStats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; margin-top: 6px; }
+.sortReviewStat { display: grid; gap: 2px; padding: 9px 7px; border: 1px solid rgba(148,163,184,.2); border-radius: 12px; text-align: center; background: rgba(255,255,255,.82); }
+.sortReviewStat strong { color: #172033; font-size: 1rem; }
+.sortReviewStat small { color: #7b8495; font-size: 10px; font-weight: 700; }
+.sortReviewStat.changed { background: #edf4ff; border-color: #c9dcff; }
+.sortReviewStat.changed strong { color: #245bc5; }
+.sortReviewStat.safe { background: #edf9f2; border-color: #ccebd8; }
+.sortReviewStat.safe strong { color: #207a49; }
+.sortReviewStat.warning { background: #fff7e8; border-color: #f1ddb3; }
+.sortReviewStat.warning strong { color: #a66500; }
+.sortReviewSafety { grid-column: 1 / -1; display: flex; gap: 9px; align-items: flex-start; margin: 2px 0 0; padding: 10px 11px; border-radius: 12px; color: #276343; background: #ecf8f1; font-size: 12px; line-height: 1.4; }
+.sortReviewSafety > span:first-child { display: grid; place-items: center; flex: none; width: 20px; height: 20px; border-radius: 50%; color: #fff; background: #2f9d64; font-size: 11px; font-weight: 900; }
+.sortReviewGuide { display: flex; gap: 10px; align-items: flex-start; margin: 15px 18px 3px; padding: 11px 12px; border: 1px solid #dbe5f4; border-radius: 13px; color: #506079; background: #f3f7fc; font-size: 12px; line-height: 1.45; }
+.sortReviewGuideIcon { color: #3769ba; font-size: 18px; line-height: 1; }
+.sortReviewSection { padding: 15px 18px 0; }
+.sortReviewSectionHeader { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 9px; }
+.sortReviewSectionHeader h3 { margin: 2px 0 0; color: #202a3b; font-size: 15px; }
+.sortReviewEyebrow { color: #4774c5; font-size: 9px; font-weight: 900; letter-spacing: .12em; }
+.sortReviewEyebrow.warning { color: #ad6b00; }
+.sortReviewToggle { min-height: 30px; padding: 5px 9px; border: 1px solid #d6dce6; border-radius: 999px; color: #687386; background: #fff; font-size: 10px; font-weight: 800; }
+.sortReviewToggle.active { color: #285ec4; border-color: #bcd0f6; background: #edf4ff; }
+.sortReviewList { display: grid; gap: 8px; max-height: 230px; overflow: auto; padding: 1px 2px 3px; margin-bottom: 3px; scrollbar-width: thin; }
+.sortReviewDataTypeGroup { display: grid; gap: 7px; padding: 8px; border: 1px solid #e2e7ef; border-radius: 15px; background: rgba(247,249,252,.82); }
+.sortReviewDataTypeHeader { display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 8px; align-items: center; padding: 1px 3px 2px; }
+.sortReviewDataTypeDot { width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 0 3px rgba(148,163,184,.16); }
+.sortReviewDataTypeHeader strong { overflow: hidden; color: #273244; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.sortReviewDataTypeHeader small { color: #7b8494; font-size: 10px; font-weight: 800; }
+.sortReviewDataTypeRows { display: grid; gap: 7px; }
+.sortReviewRow { grid-template-columns: auto auto minmax(0, 1fr) auto; }
+.sortWarningRow { grid-template-columns: auto minmax(0, 1fr) auto; }
+.sortReviewRow, .sortWarningRow { width: 100%; min-height: 62px; display: grid; gap: 10px; align-items: center; padding: 10px; border: 1px solid #e0e5ed; border-radius: 14px; color: #273244; text-align: left; background: rgba(255,255,255,.9); box-shadow: 0 1px 2px rgba(15,23,42,.03); transition: border-color .15s, box-shadow .15s, transform .15s, background .15s; }
+.sortReviewRow:hover, .sortWarningRow:not(:disabled):hover { transform: translateY(-1px); border-color: #b8c9e8; box-shadow: 0 8px 20px rgba(37, 65, 110, .09); }
+.sortReviewRow.selectedReviewRow, .sortWarningRow.selectedReviewRow { border-color: #4f7ed8; background: #f2f6ff; box-shadow: 0 0 0 3px rgba(79,126,216,.13); }
+.sortReviewRow.rowRejected { opacity: .55; background: rgba(241,243,247,.8); }
+.sortReviewRow.rowRejected .sortReviewRowIndex { color: #8894a6; background: #eef0f4; }
+.sortReviewRowCheckboxWrap { display: grid; place-items: center; padding: 0 2px; cursor: pointer; }
+.sortReviewRowCheckbox { width: 20px; height: 20px; accent-color: #4f7ed8; cursor: pointer; }
+.sortReviewRowIndex, .sortWarningIcon { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 10px; color: #315eae; background: #edf3ff; font-size: 12px; font-weight: 900; }
+.sortReviewRowBody { min-width: 0; display: grid; gap: 3px; padding: 0; border: 0; background: transparent; font: inherit; text-align: left; color: inherit; cursor: pointer; }
+.sortReviewRowBody strong { overflow-wrap: anywhere; font-size: 12px; line-height: 1.35; }
+.sortReviewRowBody small { color: #7b8494; font-size: 10px; font-weight: 600; }
+.sortReviewSelectAllBar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 8px 10px; margin-bottom: 8px; border: 1px dashed #d7dee8; border-radius: 12px; background: rgba(255,255,255,.6); }
+.sortReviewSelectAllLabel { display: inline-flex; align-items: center; gap: 8px; color: #273244; font-size: 12px; font-weight: 700; cursor: pointer; }
+.sortReviewSelectAllLabel input { width: 18px; height: 18px; accent-color: #4f7ed8; cursor: pointer; }
+.sortReviewSelectHint { color: #7b8494; font-size: 10px; font-weight: 600; }
+.sortReviewChangePill { display: inline-flex; align-items: center; gap: 5px; padding: 7px 8px; border-radius: 10px; color: #234b93; background: #eef4ff; white-space: nowrap; font-size: 11px; }
+.sortReviewChangePill i { color: #8493aa; font-style: normal; }
+.sortWarningRow.info .sortWarningIcon { color: #566174; background: #eef0f4; }
+.sortWarningRow.check .sortWarningIcon { color: #9a5e00; background: #fff2d6; }
+.sortWarningRow.high .sortWarningIcon { color: #b42318; background: #feecea; }
+.sortWarningRow.check { border-left: 3px solid #d99418; }
+.sortWarningRow.high { border-left: 3px solid #dc4a41; }
+.sortWarningRow:disabled { opacity: 1; cursor: default; }
+.sortReviewLocate { color: #3265bd; font-size: 10px; font-weight: 800; }
+.sortReviewEmpty { display: flex; align-items: center; gap: 9px; padding: 13px; border: 1px dashed #d7dee8; border-radius: 13px; color: #667085; background: rgba(255,255,255,.6); font-size: 12px; }
+.sortReviewEmpty.success span { display: grid; place-items: center; width: 23px; height: 23px; border-radius: 50%; color: #fff; background: #35a269; }
+.stickyReviewActions { position: sticky; bottom: 0; z-index: 2; display: grid; grid-template-columns: 1fr 1.35fr; gap: 9px; margin-top: 17px; padding: 14px 18px 18px; border-top: 1px solid rgba(148,163,184,.22); background: rgba(250,251,253,.94); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+.sortReviewCancelBtn, .sortReviewApplyBtn { min-height: 44px; border-radius: 12px; font-weight: 800; }
+.sortReviewApplyBtn { box-shadow: 0 9px 20px rgba(37, 99, 235, .2); }
+
+/* Temporary markers shown only while the review drawer is open — v19.
+   Unchanged points receive no class and therefore no marker. */
+.point.sort-review-changed,
+.point.sort-review-warning { z-index: 120 !important; }
+
+/* A true visible number change gets a restrained blue square highlight. */
+.point.sort-review-changed {
+  box-shadow: 0 0 0 2px #4f7ed8, 0 0 0 5px rgba(79,126,216,.16) !important;
+  border-radius: 5px !important;
+}
+.point.sort-review-changed::before,
+.point.sort-review-changed::after { content: none !important; }
+
+/* Warnings remain visually distinct from number changes. */
+.point.sort-review-warning {
+  box-shadow: 0 0 0 2px #d99418, 0 0 0 5px rgba(217,148,24,.18) !important;
+}
+.point.sort-review-warning:not(.sort-review-changed)::after {
+  content: attr(data-sort-review-warning);
+  position: absolute;
+  right: -12px;
+  top: -13px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 2px solid #fff;
+  border-radius: 6px;
+  color: #fff;
+  background: #d58a12;
+  box-shadow: 0 4px 10px rgba(160,96,0,.25);
+  font-size: 11px;
+  font-weight: 900;
+  pointer-events: none;
+}
+.point.sort-review-warning-high {
+  box-shadow: 0 0 0 2px #d23c35, 0 0 0 5px rgba(210,60,53,.18) !important;
+}
+.point.sort-review-warning-high:not(.sort-review-changed)::after { background: #d23c35; }
+.point.sort-review-changed.sort-review-warning {
+  box-shadow: 0 0 0 2px #d99418, 0 0 0 5px rgba(217,148,24,.2) !important;
+}
+.point.sort-review-changed.sort-review-warning-high {
+  box-shadow: 0 0 0 2px #d23c35, 0 0 0 5px rgba(210,60,53,.2) !important;
+}
+
+/* A rejected change: shown as neutral/pinned rather than "changing". */
+.point.sort-review-rejected {
+  z-index: 110 !important;
+  box-shadow: 0 0 0 2px #94a3b8, 0 0 0 5px rgba(148,163,184,.14) !important;
+  border-radius: 5px !important;
+}
+
+/* Selected review item: no movement, only a short purple pulse. */
+.point.sort-review-active { z-index: 180 !important; }
+.sort-review-flash { animation: sortReviewFlashV19 .3s ease-in-out 3 alternate; }
+@keyframes sortReviewFlashV19 {
+  from { filter: brightness(1); box-shadow: inherit; }
+  to { filter: brightness(1.24) drop-shadow(0 0 8px rgba(124,58,237,.9)); }
+}
+
+@media (max-width: 760px) {
+  .sortReviewBackdrop { padding: 8px; background: rgba(15,23,42,.18); }
+  .autoSortReviewCard { width: min(430px, calc(100vw - 16px)); max-height: calc(100vh - 16px); border-radius: 18px; }
+  .sortReviewStats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sortReviewHeader { padding: 16px; }
+  .sortReviewSection { padding-left: 14px; padding-right: 14px; }
+  .sortReviewRow { grid-template-columns: auto auto minmax(0,1fr); }
+  .sortWarningRow { grid-template-columns: auto minmax(0,1fr); }
+  .sortReviewChangePill, .sortReviewLocate { grid-column: -2 / -1; justify-self: start; }
+  .stickyReviewActions { padding-left: 14px; padding-right: 14px; }
+}
+
+
+/* Auto Sort Review refinements — v21 */
+.sortReviewRowBody strong i { color:#8493aa; padding:0 3px; font-style:normal; }
+.sortReviewRow .sortReviewLocate { padding:6px 8px; border-radius:9px; background:#edf4ff; }
+
+
+/* v27: Auto Sort filters, library activity, and export feedback */
+.sortReviewFilterBar { display:flex; gap:7px; overflow-x:auto; padding:0 2px 10px; scrollbar-width:thin; }
+.sortReviewFilterChip { flex:none; display:inline-flex; align-items:center; gap:6px; min-height:32px; padding:6px 9px; border:1px solid #dce3ed; border-radius:999px; color:#5f6b7d; background:#fff; font-size:11px; font-weight:800; }
+.sortReviewFilterChip small { min-width:18px; padding:2px 5px; border-radius:999px; color:#738096; background:#f0f3f7; font-size:9px; text-align:center; }
+.sortReviewFilterChip.active { color:#2459b8; border-color:#b9cdf3; background:#edf4ff; box-shadow:0 0 0 2px rgba(66,110,190,.08); }
+.sortReviewFilterDot { width:9px; height:9px; border-radius:50%; box-shadow:0 0 0 2px rgba(148,163,184,.18); }

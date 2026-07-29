@@ -993,18 +993,18 @@ const App = (() => {
   }
 
   async function handleImportFile(event) {
-    const fileList = Array.from(event.target.files || []);
-    if (!fileList.length) return;
+    const selectedFiles = Array.from(event.target.files || []);
+    if (!selectedFiles.length) return;
 
-    const importedNames = [];
+    let importedCount = 0;
     const failures = [];
 
-    for (const file of fileList) {
+    for (const file of selectedFiles) {
       let data;
       try {
         data = JSON.parse(await file.text());
       } catch (error) {
-        failures.push(`${file.name}: could not be read`);
+        failures.push(`${file.name}: could not be read.`);
         continue;
       }
 
@@ -1012,7 +1012,7 @@ const App = (() => {
         try {
           const project = convertLegacyDataExport(data, currentFolderId);
           await ProjectDB.saveProject(project);
-          importedNames.push(project.name);
+          importedCount += 1;
         } catch (error) {
           failures.push(`${file.name}: ${explainDbError(error)}`);
         }
@@ -1020,41 +1020,35 @@ const App = (() => {
       }
 
       if (!data || !["field-measurement-file", "field-measurement-files"].includes(data.format)) {
-        failures.push(`${file.name}: not a recognized export file`);
+        failures.push(`${file.name}: not a single-file export. For a whole-library backup, use Restore instead.`);
         continue;
       }
 
       try {
-        const files = data.format === "field-measurement-files" && Array.isArray(data.files)
+        const bundledFiles = data.format === "field-measurement-files" && Array.isArray(data.files)
           ? data.files : [data];
-        for (const fileData of files) {
-          const project = await ProjectDB.importProject(fileData, currentFolderId);
-          importedNames.push(project.name);
+        for (const fileData of bundledFiles) {
+          await ProjectDB.importProject(fileData, currentFolderId);
+          importedCount += 1;
         }
       } catch (error) {
         failures.push(`${file.name}: ${explainDbError(error)}`);
       }
     }
 
-    if (importedNames.length) {
-      await refreshLibrary();
-    }
+    if (importedCount > 0) await refreshLibrary();
 
-    const messageParts = [];
-    if (importedNames.length === 1) {
-      messageParts.push(`Imported "${importedNames[0]}" into this folder.`);
-    } else if (importedNames.length > 1) {
-      messageParts.push(`Imported ${importedNames.length} work files into this folder.`);
+    const parts = [];
+    if (importedCount > 0) {
+      parts.push(importedCount === 1
+        ? "Imported 1 work file into this folder."
+        : `Imported ${importedCount} work files into this folder.`);
     }
     if (failures.length) {
-      messageParts.push(
-        (importedNames.length ? "\n\n" : "") +
-        `${failures.length} file(s) failed:\n` + failures.join("\n")
-      );
+      parts.push(`${failures.length === 1 ? "1 file" : `${failures.length} files`} could not be imported:\n` + failures.join("\n"));
     }
-    if (messageParts.length) {
-      alert(messageParts.join(""));
-    }
+    if (!parts.length) parts.push("Nothing was imported.");
+    alert(parts.join("\n\n"));
   }
 
   function updateBackupStatus() {

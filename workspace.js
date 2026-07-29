@@ -80,6 +80,12 @@ const Workspace = (() => {
   let lastAutoSortSide = "N";
   let lastAutoSortDirection = "clockwise";
   let lastAutoSortMethod = "position";
+  let pendingAutoSortReview = null;
+  let autoSortReviewFilter = "all";
+  let rejectedChangeUids = new Set();
+  let sortReviewShowChanges = true;
+  let sortReviewShowWarnings = true;
+  let activeSortReviewUid = null;
 
   let pdfDocument = null;
   let currentPdfPage = 1;
@@ -180,8 +186,19 @@ const Workspace = (() => {
     els.autoSortSide = document.getElementById("autoSortSide");
     els.autoSortDirectionChoices = Array.from(document.querySelectorAll('input[name="autoSortDirection"]'));
     els.autoSortMethodChoices = Array.from(document.querySelectorAll('input[name="autoSortMethod"]'));
+    els.autoSortNoDataMessage = document.getElementById("autoSortNoDataMessage");
     els.confirmAutoSortBtn = document.getElementById("confirmAutoSortBtn");
     els.cancelAutoSortBtn = document.getElementById("cancelAutoSortBtn");
+
+    els.autoSortReviewModal = document.getElementById("autoSortReviewModal");
+    els.autoSortReviewSummary = document.getElementById("autoSortReviewSummary");
+    els.autoSortReviewFilters = document.getElementById("autoSortReviewFilters");
+    els.autoSortReviewChanges = document.getElementById("autoSortReviewChanges");
+    els.autoSortReviewWarnings = document.getElementById("autoSortReviewWarnings");
+    els.toggleSortReviewChangesBtn = document.getElementById("toggleSortReviewChangesBtn");
+    els.toggleSortReviewWarningsBtn = document.getElementById("toggleSortReviewWarningsBtn");
+    els.cancelAutoSortReviewBtn = document.getElementById("cancelAutoSortReviewBtn");
+    els.applyAutoSortReviewBtn = document.getElementById("applyAutoSortReviewBtn");
     els.sideChoices = Array.from(document.querySelectorAll(".sideBtn"));
 
     els.setPositionModal = document.getElementById("setPositionModal");
@@ -561,6 +578,27 @@ const Workspace = (() => {
     els.autoSortModal.addEventListener("click", event => {
       if (event.target === els.autoSortModal) closeAutoSortModal();
     });
+    els.autoSortDataType.addEventListener("change", hideAutoSortNoDataMessage);
+    els.autoSortSide.addEventListener("change", hideAutoSortNoDataMessage);
+
+    // Auto Sort Review dialog.
+    if (els.applyAutoSortReviewBtn) els.applyAutoSortReviewBtn.addEventListener("click", applyPendingAutoSortReview);
+    if (els.cancelAutoSortReviewBtn) els.cancelAutoSortReviewBtn.addEventListener("click", cancelPendingAutoSortReview);
+    if (els.toggleSortReviewChangesBtn) els.toggleSortReviewChangesBtn.addEventListener("click", () => {
+      sortReviewShowChanges = !sortReviewShowChanges;
+      setReviewToggle(els.toggleSortReviewChangesBtn, sortReviewShowChanges);
+      applyAutoSortReviewMarkers(pendingAutoSortReview && pendingAutoSortReview.review);
+    });
+    if (els.toggleSortReviewWarningsBtn) els.toggleSortReviewWarningsBtn.addEventListener("click", () => {
+      sortReviewShowWarnings = !sortReviewShowWarnings;
+      setReviewToggle(els.toggleSortReviewWarningsBtn, sortReviewShowWarnings);
+      applyAutoSortReviewMarkers(pendingAutoSortReview && pendingAutoSortReview.review);
+    });
+    if (els.autoSortReviewModal) {
+      els.autoSortReviewModal.addEventListener("click", event => {
+        if (event.target === els.autoSortReviewModal) cancelPendingAutoSortReview();
+      });
+    }
 
     // Set Position modal.
     els.confirmSetPositionBtn.addEventListener("click", confirmSetPosition);
@@ -816,6 +854,12 @@ const Workspace = (() => {
 
   async function closeProject(saveBeforeClosing = true) {
     if (!project) return;
+
+    // The Auto Sort Review panel is a fixed-position overlay. If it's left
+    // open when the project closes (e.g. tapping Library without pressing
+    // Cancel/Apply first), it would otherwise stay rendered on top of
+    // whatever screen comes next instead of closing with the project.
+    if (pendingAutoSortReview) cancelPendingAutoSortReview();
 
     if (saveBeforeClosing && SaveController.isDirty()) {
       await SaveController.save("close", true);
@@ -2033,46 +2077,29 @@ const Workspace = (() => {
     if (!dataType.lockedSides.includes(side)) dataType.lockedSides.push(side);
   }
 
-  function autoSortSide(dataId, side, direction = "clockwise", method = "position") {
-    const dataType = getDataType(dataId);
-    if (!dataType) return;
-
-    const clockwise = direction !== "counterclockwise";
-    let sorted;
-
-    if (method === "angle") {
-      sorted = sortPointsByAngle(pointsInSide(dataId, side), clockwise);
-    } else {
-      sorted = pointsInSide(dataId, side).slice();
-
-      // Clockwise: N left→right, E top→bottom, S right→left, W bottom→top.
-      // Counterclockwise reverses each side.
-      const ascending = clockwise
-        ? (side === "N" || side === "E")
-        : (side === "S" || side === "W");
-
-      if (side === "E" || side === "W") {
-        sorted.sort((a, b) => ascending ? a.y - b.y : b.y - a.y);
-      } else {
-        sorted.sort((a, b) => ascending ? a.x - b.x : b.x - a.x);
-      }
-    }
-
-    if (!Array.isArray(dataType.lockedSides)) dataType.lockedSides = [];
-    sorted.forEach((point, index) => { point.manualSeq = index + 1; });
-    if (!dataType.lockedSides.includes(side)) dataType.lockedSides.push(side);
-  }
-
   /*
-    Angle-based ordering for curved/circular walls, where a straight
-    left-right or top-bottom coordinate sort breaks down because the arc
-    bends back on itself (two points at very different positions along the
-    wall can share the same X or Y).
+    Angle-based ordering for walls, straight or curved, where a plain
+    left-right/top-bottom coordinate sort breaks down on a bend because two
+    points at very different positions along the wall can share a similar X
+    or Y once the wall starts curving back.
 
-    Approach: find the centre of this group of points, measure each point's
-    angle around that centre, then walk around in angle order. In screen
-    coordinates (Y increases downward), increasing atan2(dy, dx) already
-    matches a visually clockwise sweep, so no axis flip is needed.
+    Approach: measure each point's angle around a reference centre, then
+    walk around in angle order. In screen coordinates (Y increases
+    downward), increasing atan2(dy, dx) already matches a visually
+    clockwise sweep, so no axis flip is needed.
+
+    The reference centre matters a lot: for a genuinely curved wall, that
+    wall's own centroid sits inside the curve and works fine. But for a
+    straight (or nearly straight) wall, its own centroid sits almost ON the
+    line — which makes the angle calculation numerically unstable, since
+    tiny natural jitter perpendicular to the wall (no real measurement is
+    ever perfectly collinear) can flip a point's angle past a close
+    neighbour's, producing a spurious swap. Passing in a centre that's well
+    off the line — e.g. the centroid of the whole room, not just this one
+    side — keeps every point's angle changing smoothly and monotonically
+    along the wall regardless of whether it's straight or curved, so jitter
+    can no longer flip the order. When no such centre is available (or it's
+    degenerate), this falls back to the group's own centroid.
 
     Because a single wall is only ever a partial arc (not a full loop), the
     points won't span all 360°. We find the single largest gap between
@@ -2080,11 +2107,17 @@ const Workspace = (() => {
     ordering starts right after that gap. This avoids the wrap-around bug
     where a wall crossing the 0°/360° line would otherwise sort incorrectly.
   */
-  function sortPointsByAngle(pointsList, clockwise) {
+  function sortPointsByAngle(pointsList, clockwise, referenceCenter = null) {
     if (pointsList.length <= 1) return pointsList.slice();
 
-    const cx = pointsList.reduce((sum, p) => sum + p.x, 0) / pointsList.length;
-    const cy = pointsList.reduce((sum, p) => sum + p.y, 0) / pointsList.length;
+    let cx, cy;
+    if (referenceCenter && Number.isFinite(referenceCenter.x) && Number.isFinite(referenceCenter.y)) {
+      cx = referenceCenter.x;
+      cy = referenceCenter.y;
+    } else {
+      cx = pointsList.reduce((sum, p) => sum + p.x, 0) / pointsList.length;
+      cy = pointsList.reduce((sum, p) => sum + p.y, 0) / pointsList.length;
+    }
 
     const withAngles = pointsList.map(point => {
       let angle = Math.atan2(point.y - cy, point.x - cx);
@@ -2113,6 +2146,71 @@ const Workspace = (() => {
     const ordered = clockwise ? rotated : rotated.slice().reverse();
     return ordered.map(item => item.point);
   }
+
+  // Centroid of every non-excluded point in this data type, across all
+  // sides — used as the stable angle-sort reference centre (see comment
+  // on sortPointsByAngle above). Falls back to null when there simply
+  // aren't enough points elsewhere to form a meaningful room-wide centre,
+  // in which case sortPointsByAngle falls back to the side's own centroid.
+  // Averaging every point directly would let a side with lots of points
+  // (e.g. a wall with doors/trim/fixtures) drag the "room centre" toward
+  // itself and away from a side with only a few points — which can put the
+  // centre too close to that sparser side and reintroduce the same
+  // instability this is meant to fix. Instead, find each side's own
+  // centroid first, then average those centroids, so every side pulls
+  // equally regardless of how many points it has.
+  function roomCenterForDataType(dataId) {
+    const bySide = {};
+    points.forEach(p => {
+      if (p.dataId !== dataId || p.excluded || !p.assignedSide) return;
+      if (!bySide[p.assignedSide]) bySide[p.assignedSide] = { sumX: 0, sumY: 0, count: 0 };
+      const bucket = bySide[p.assignedSide];
+      bucket.sumX += p.x;
+      bucket.sumY += p.y;
+      bucket.count += 1;
+    });
+
+    const sideCentroids = Object.values(bySide).map(b => ({ x: b.sumX / b.count, y: b.sumY / b.count }));
+    if (sideCentroids.length < 2) return null;
+
+    return {
+      x: sideCentroids.reduce((sum, c) => sum + c.x, 0) / sideCentroids.length,
+      y: sideCentroids.reduce((sum, c) => sum + c.y, 0) / sideCentroids.length
+    };
+  }
+
+  function autoSortSide(dataId, side, direction = "clockwise", method = "position") {
+    const dataType = getDataType(dataId);
+    if (!dataType) return;
+    const clockwise = direction !== "counterclockwise";
+    const targetPoints = pointsInSide(dataId, side);
+
+    let sorted;
+    if (method === "angle") {
+      const center = roomCenterForDataType(dataId);
+      sorted = sortPointsByAngle(targetPoints, clockwise, center);
+    } else {
+      // Straight-wall method: a plain coordinate sort along the side's own
+      // axis. No centroid or angle math at all, so there is nothing for
+      // measurement jitter to destabilize — the right choice whenever a
+      // wall is straight (or close to it). Use "Curved wall" only for
+      // walls with real, visible curvature.
+      sorted = targetPoints.slice();
+      const ascending = clockwise
+        ? (side === "N" || side === "E")
+        : (side === "S" || side === "W");
+      if (side === "E" || side === "W") {
+        sorted.sort((a, b) => ascending ? a.y - b.y : b.y - a.y);
+      } else {
+        sorted.sort((a, b) => ascending ? a.x - b.x : b.x - a.x);
+      }
+    }
+
+    if (!Array.isArray(dataType.lockedSides)) dataType.lockedSides = [];
+    sorted.forEach((point, index) => { point.manualSeq = index + 1; });
+    if (!dataType.lockedSides.includes(side)) dataType.lockedSides.push(side);
+  }
+
 
   function getBounds(typePoints) {
     const xs = typePoints.map(point => point.x);
@@ -2158,6 +2256,7 @@ const Workspace = (() => {
           uid: p.uid,
           manualSeq: p.manualSeq,
           assignedSide: p.assignedSide,
+          assignedSeq: p.assignedSeq,
           excluded: !!p.excluded
         }))
     };
@@ -2184,6 +2283,7 @@ const Workspace = (() => {
         if (entry) {
           p.manualSeq = entry.manualSeq;
           p.assignedSide = entry.assignedSide;
+          p.assignedSeq = entry.assignedSeq;
           p.excluded = !!entry.excluded;
         }
       });
@@ -2376,6 +2476,621 @@ const Workspace = (() => {
     return els.dataSelect ? els.dataSelect.value : null;
   }
 
+  /* ---------- Auto Sort Review ----------
+     Builds a before/after diff so the operator can see exactly which point
+     numbers would change (and any geometric warnings) before committing. */
+
+  function pointDisplayName(point, seqOverride = null) {
+    const dt = getDataType(point.dataId);
+    const seq = seqOverride == null ? (point.assignedSeq || "?") : seqOverride;
+    const side = point.assignedSide ? sideDisplayLabel(point.assignedSide) : "Unassigned";
+    return `${dt ? dt.name : "Data"} · ${point.assignedSide ? `${side}-${seq}` : side}`;
+  }
+
+  function mapSnapshotPoints(snapshot) {
+    const map = new Map();
+    (snapshot && snapshot.points ? snapshot.points : []).forEach(entry => map.set(entry.uid, entry));
+    return map;
+  }
+
+  // Review is about visible numbering, not internal ordering metadata:
+  // manualSeq may be rewritten while the displayed Side + sequence stays
+  // exactly the same, and those points must not appear under Changes.
+  function compareSnapshotChanges(beforeSnapshot, afterSnapshot) {
+    const beforeMap = mapSnapshotPoints(beforeSnapshot);
+    const afterMap = mapSnapshotPoints(afterSnapshot);
+    const changes = [];
+    afterMap.forEach((afterEntry, uid) => {
+      const beforeEntry = beforeMap.get(uid);
+      if (!beforeEntry) return;
+
+      const beforeSide = beforeEntry.assignedSide || "";
+      const afterSide = afterEntry.assignedSide || beforeSide;
+      const beforeSeq = beforeEntry.assignedSeq ?? null;
+      const afterSeq = afterEntry.assignedSeq ?? null;
+      const visibleNumberChanged = beforeSide !== afterSide || beforeSeq !== afterSeq;
+      if (!visibleNumberChanged) return;
+
+      const point = points.find(p => p.uid === uid);
+      if (point) {
+        const dataType = getDataType(point.dataId);
+        changes.push({
+          uid,
+          point,
+          dataId: point.dataId,
+          dataTypeName: dataType ? dataType.name : "Data",
+          dataTypeColor: dataType ? dataType.color : "#667085",
+          side: afterSide,
+          beforeSide,
+          afterSide,
+          beforeSeq,
+          afterSeq
+        });
+      }
+    });
+    return changes;
+  }
+
+  function median(values) {
+    if (!values.length) return 0;
+    const sorted = values.slice().sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  }
+
+  function tagWarningDataType(warning, point) {
+    if (point) {
+      const dataType = getDataType(point.dataId);
+      warning.dataId = point.dataId;
+      warning.dataTypeName = dataType ? dataType.name : "Data";
+      warning.dataTypeColor = dataType ? dataType.color : "#667085";
+    }
+    return warning;
+  }
+
+  function collectGroupWarnings(groups) {
+    const byUid = new Map();
+    const severityRank = { high: 3, check: 2, info: 1 };
+
+    // Keep at most one warning per point — the most severe one — instead
+    // of letting overlap/far/gap checks all fire for the same point.
+    const addWarning = warning => {
+      const existing = byUid.get(warning.uid);
+      if (!existing || severityRank[warning.level] > severityRank[existing.level]) {
+        byUid.set(warning.uid, warning);
+      }
+    };
+
+    // Nearly overlapping points, checked within each side individually.
+    // Adjacent sides meet at a shared corner, where the last point of one
+    // side and the first point of the next are *expected* to sit close
+    // together — that is not an error, so corners must not be compared
+    // across groups here.
+    groups.forEach(group => {
+      const groupPoints = group.points;
+      for (let i = 0; i < groupPoints.length; i += 1) {
+        for (let j = i + 1; j < groupPoints.length; j += 1) {
+          const distance = Math.hypot(groupPoints[i].x - groupPoints[j].x, groupPoints[i].y - groupPoints[j].y);
+          if (distance < 10) {
+            addWarning(tagWarningDataType({ level: "high", uid: groupPoints[i].uid, text: `${pointDisplayName(groupPoints[i])} is almost overlapping another point in ${group.label}.` }, groupPoints[i]));
+            break;
+          }
+        }
+      }
+    });
+
+    groups.forEach(group => {
+      if (group.points.length === 1) {
+        addWarning(tagWarningDataType({ level: "info", uid: group.points[0].uid, text: `${group.label} contains only one point.` }, group.points[0]));
+        return;
+      }
+
+      // A point sitting noticeably off the wall's own line/curve is a much
+      // more specific signal of mis-assignment than "far from the group's
+      // centroid" — a point at the far end of a long straight wall is
+      // naturally far from the centroid without anything being wrong.
+      // Measure perpendicular deviation from the group's principal axis
+      // instead, and only flag deviation that's well outside the group's
+      // own typical spread (skip this entirely for very small groups,
+      // where "typical" isn't meaningful).
+      if (group.points.length >= 3) {
+        const cx = group.points.reduce((sum, p) => sum + p.x, 0) / group.points.length;
+        const cy = group.points.reduce((sum, p) => sum + p.y, 0) / group.points.length;
+        let xx = 0, yy = 0, xy = 0;
+        group.points.forEach(p => {
+          const dx = p.x - cx, dy = p.y - cy;
+          xx += dx * dx; yy += dy * dy; xy += dx * dy;
+        });
+        const theta = 0.5 * Math.atan2(2 * xy, xx - yy);
+        const perpX = -Math.sin(theta), perpY = Math.cos(theta);
+        const perpDistances = group.points.map(p => Math.abs((p.x - cx) * perpX + (p.y - cy) * perpY));
+        const medPerp = median(perpDistances);
+        const perpThreshold = Math.max(60, medPerp * 4.5);
+        group.points.forEach((point, index) => {
+          if (perpDistances[index] > perpThreshold) {
+            addWarning(tagWarningDataType({ level: "check", uid: point.uid, text: `${pointDisplayName(point)} sits noticeably off the line of ${group.label}. Check its Side manually.` }, point));
+          }
+        });
+      }
+    });
+
+    return Array.from(byUid.values()).slice(0, 30);
+  }
+
+  function buildCompassSortReview(targetDataTypes, targets, before, after, direction) {
+    const changes = [];
+    targetDataTypes.forEach(dt => changes.push(...compareSnapshotChanges(before[dt.id], after[dt.id])));
+    const groups = targets.map(({ dt, side }) => ({ label: `${dt.name} · ${side}`, dataId: dt.id, points: pointsInSide(dt.id, side) }));
+    const checked = groups.reduce((sum, group) => sum + group.points.length, 0);
+    return { title: "Auto Sort Review", context: `${direction === "clockwise" ? "Clockwise" : "Counterclockwise"} · Side assignments unchanged`, checked, changes, warnings: collectGroupWarnings(groups) };
+  }
+
+  function clearAutoSortReviewMarkers() {
+    activeSortReviewUid = null;
+    els.drawingArea.querySelectorAll(".point.sort-review-changed, .point.sort-review-warning, .point.sort-review-active, .point.sort-review-rejected").forEach(element => {
+      element.classList.remove("sort-review-changed", "sort-review-warning", "sort-review-warning-high", "sort-review-warning-check", "sort-review-active", "sort-review-flash", "sort-review-rejected");
+      delete element.dataset.sortReviewLabel;
+      delete element.dataset.sortReviewWarning;
+    });
+  }
+
+  function applyAutoSortReviewMarkers(review) {
+    clearAutoSortReviewMarkers();
+    if (!review) return;
+
+    if (sortReviewShowChanges) {
+      review.changes.forEach(change => {
+        const element = findPointElement(change.uid);
+        if (!element) return;
+        if (rejectedChangeUids.has(change.uid)) {
+          element.classList.add("sort-review-rejected");
+          return;
+        }
+        element.classList.add("sort-review-changed");
+        element.dataset.sortReviewLabel = `${change.beforeSide || change.side}${change.beforeSeq ?? "?"} → ${change.afterSide || change.side}${change.afterSeq ?? "?"}`;
+      });
+    }
+
+    if (sortReviewShowWarnings) {
+      review.warnings.forEach(warning => {
+        if (!warning.uid) return;
+        const element = findPointElement(warning.uid);
+        if (!element) return;
+        element.classList.add("sort-review-warning");
+        element.classList.toggle("sort-review-warning-high", warning.level === "high");
+        element.classList.toggle("sort-review-warning-check", warning.level === "check");
+        element.dataset.sortReviewWarning = warning.level === "high" ? "!" : warning.level === "check" ? "!" : "i";
+      });
+    }
+  }
+
+  function setReviewToggle(button, active) {
+    if (!button) return;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+    button.textContent = active ? "Shown on drawing" : "Hidden on drawing";
+  }
+
+  function formatReviewCode(side, seq) {
+    const cleanSide = side ? sideDisplayLabel(side) : "?";
+    const cleanSeq = seq ?? "?";
+    return `${cleanSide}-${cleanSeq}`;
+  }
+
+  function flashReviewElement(element) {
+    if (!element) return;
+    element.classList.add("sort-review-active");
+    void element.offsetWidth;
+    element.classList.add("sort-review-flash");
+    setTimeout(() => element.classList.remove("sort-review-flash"), 1000);
+  }
+
+  function focusReviewPoint(uid, sourceRow) {
+    const point = points.find(p => p.uid === uid);
+    if (!point) return;
+    const element = findPointElement(uid);
+    if (!element) return;
+
+    activeSortReviewUid = uid;
+    document.querySelectorAll(".sortReviewRow.selectedReviewRow, .sortWarningRow.selectedReviewRow").forEach(row => row.classList.remove("selectedReviewRow"));
+    if (sourceRow) sourceRow.classList.add("selectedReviewRow");
+    els.drawingArea.querySelectorAll(".point.sort-review-active").forEach(item => item.classList.remove("sort-review-active", "sort-review-flash"));
+
+    // Both Number Changes and Warning rows move the viewport to the point.
+    // The point label itself stays at its drawing coordinates and only
+    // receives a visual flash after the viewport finishes moving.
+    //
+    // The review panel is docked over the right edge of the screen and can
+    // cover a large share of a tablet-width viewport. Centering on the
+    // FULL wrapper width ignores that overlap and can land the point right
+    // behind the panel. Instead, center within only the portion of the
+    // wrapper that's actually still visible to the left of the panel.
+    const wrapper = els.drawingWrapper;
+    const wrapperRect = wrapper.getBoundingClientRect();
+    let visibleWidth = wrapper.clientWidth;
+    if (els.autoSortReviewModal && !els.autoSortReviewModal.classList.contains("hidden")) {
+      const card = els.autoSortReviewModal.querySelector(".autoSortReviewCard");
+      if (card) {
+        const cardRect = card.getBoundingClientRect();
+        const overlapWidth = Math.max(0, wrapperRect.right - Math.max(wrapperRect.left, cardRect.left));
+        visibleWidth = Math.max(200, wrapper.clientWidth - overlapWidth);
+      }
+    }
+
+    const targetLeft = Math.max(0, point.x * zoomLevel - visibleWidth / 2);
+    const targetTop = Math.max(0, point.y * zoomLevel - wrapper.clientHeight / 2);
+    if (typeof wrapper.scrollTo === "function") {
+      wrapper.scrollTo({ left: targetLeft, top: targetTop, behavior: "smooth" });
+    } else {
+      wrapper.scrollLeft = targetLeft;
+      wrapper.scrollTop = targetTop;
+    }
+    setTimeout(() => flashReviewElement(element), 340);
+  }
+
+  function createReviewStat(value, label, tone) {
+    return `<span class="sortReviewStat ${tone || ""}"><strong>${value}</strong><small>${label}</small></span>`;
+  }
+
+  function renderAutoSortReviewFilters(review) {
+    if (!els.autoSortReviewFilters) return;
+    const typeMap = new Map();
+    (review.changes || []).forEach(change => {
+      if (!typeMap.has(change.dataId)) {
+        typeMap.set(change.dataId, {
+          id: change.dataId,
+          name: change.dataTypeName || "Data",
+          color: change.dataTypeColor || "#667085",
+          count: 0
+        });
+      }
+      typeMap.get(change.dataId).count += 1;
+    });
+
+    const types = Array.from(typeMap.values());
+    if (autoSortReviewFilter !== "all" && !typeMap.has(autoSortReviewFilter)) {
+      autoSortReviewFilter = "all";
+    }
+
+    els.autoSortReviewFilters.innerHTML = "";
+    els.autoSortReviewFilters.classList.toggle("hidden", types.length <= 1);
+    if (types.length <= 1) return;
+
+    const addChip = (value, label, color, count) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "sortReviewFilterChip" + (autoSortReviewFilter === value ? " active" : "");
+      chip.dataset.filter = value;
+      chip.innerHTML = `${color ? `<span class="sortReviewFilterDot" style="background:${escapeHTML(color)}"></span>` : ""}<span>${escapeHTML(label)}</span><small>${count}</small>`;
+      chip.addEventListener("click", () => {
+        autoSortReviewFilter = value;
+        applyAutoSortReviewFilter();
+        renderAutoSortReviewFilters(review);
+      });
+      els.autoSortReviewFilters.appendChild(chip);
+    };
+
+    addChip("all", "All", "", review.changes.length);
+    types.forEach(type => addChip(type.id, type.name, type.color, type.count));
+  }
+
+  function applyAutoSortReviewFilter() {
+    if (!els.autoSortReviewChanges) return;
+    els.autoSortReviewChanges.querySelectorAll(".sortReviewDataTypeGroup").forEach(group => {
+      group.classList.toggle("hidden", autoSortReviewFilter !== "all" && group.dataset.dataId !== autoSortReviewFilter);
+    });
+    if (els.autoSortReviewWarnings) {
+      els.autoSortReviewWarnings.querySelectorAll(".sortReviewDataTypeGroup").forEach(group => {
+        group.classList.toggle("hidden", autoSortReviewFilter !== "all" && group.dataset.dataId !== autoSortReviewFilter);
+      });
+    }
+  }
+
+  function buildWarningRow(warning) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = `sortWarningRow ${warning.level}`;
+    row.innerHTML = `<span class="sortWarningIcon">${warning.level === "high" ? "!" : warning.level === "check" ? "!" : "i"}</span><span class="sortReviewRowBody"><strong>${escapeHTML(warning.text)}</strong><small>${warning.level === "high" ? "High attention" : warning.level === "check" ? "Please verify manually" : "Information"}</small></span>${warning.uid ? '<span class="sortReviewLocate">Locate</span>' : ""}`;
+    if (warning.uid) row.addEventListener("click", () => focusReviewPoint(warning.uid, row));
+    else row.disabled = true;
+    return row;
+  }
+
+  function updateApplyButtonLabel(totalChanges) {
+    if (!els.applyAutoSortReviewBtn) return;
+    const rejected = rejectedChangeUids.size;
+    if (!totalChanges || rejected === 0) {
+      els.applyAutoSortReviewBtn.textContent = "Apply Auto Sort";
+    } else {
+      const applying = totalChanges - rejected;
+      els.applyAutoSortReviewBtn.textContent = `Apply Auto Sort (${applying} of ${totalChanges})`;
+    }
+  }
+
+  // While the review panel covers the right edge of the screen, a point
+  // near the drawing's own right edge may need MORE rightward scroll than
+  // the canvas actually has room for, so it can never be pulled clear of
+  // the panel no matter what focusReviewPoint asks for — the browser
+  // simply clamps at the end of the content. Giving the scrollable sizer
+  // some temporary extra width (via margin, since box-sizing: border-box
+  // means padding wouldn't grow it) guarantees there's always enough room
+  // to fully center any point while the panel is open, and removing it
+  // afterward restores normal scroll bounds for editing.
+  function setReviewExtraScrollRoom(extraPx) {
+    if (!els.drawingSizer) return;
+    els.drawingSizer.style.marginRight = extraPx > 0 ? `${extraPx}px` : "";
+  }
+
+  function openAutoSortReview(review) {
+    if (!els.autoSortReviewModal) return;
+    const unchanged = Math.max(0, review.checked - review.changes.length);
+    sortReviewShowChanges = true;
+    sortReviewShowWarnings = true;
+    rejectedChangeUids = new Set();
+    setReviewToggle(els.toggleSortReviewChangesBtn, true);
+    setReviewToggle(els.toggleSortReviewWarningsBtn, true);
+
+    els.autoSortReviewSummary.innerHTML = `
+      <div class="sortReviewTitleRow"><strong>${escapeHTML(review.title)}</strong><span class="sortReviewReadyBadge">Ready to review</span></div>
+      <span class="sortReviewContext">${escapeHTML(review.context)}</span>
+      <div class="sortReviewStats">
+        ${createReviewStat(review.checked, "Checked", "neutral")}
+        ${createReviewStat(review.changes.length, "Changed", "changed")}
+        ${createReviewStat(unchanged, "Unchanged", "safe")}
+        ${createReviewStat(review.warnings.length, "Warnings", review.warnings.length ? "warning" : "safe")}
+      </div>
+      <p class="sortReviewSafety"><span>✓</span><span><strong>Assignments protected.</strong> Auto Sort did not change any Side.</span></p>`;
+
+    els.autoSortReviewChanges.innerHTML = review.changes.length ? "" : '<div class="sortReviewEmpty success"><span>✓</span><strong>No point numbers would change.</strong></div>';
+    updateApplyButtonLabel(review.changes.length);
+
+    if (review.changes.length) {
+      const selectAllBar = document.createElement("div");
+      selectAllBar.className = "sortReviewSelectAllBar";
+      selectAllBar.innerHTML = `<label class="sortReviewSelectAllLabel"><input type="checkbox" id="sortReviewSelectAllCheckbox" checked><span>Apply all ${review.changes.length} number changes</span></label><small class="sortReviewSelectHint">Uncheck a point below to leave its number exactly as it is.</small>`;
+      els.autoSortReviewChanges.appendChild(selectAllBar);
+      const selectAllCheckbox = selectAllBar.querySelector("#sortReviewSelectAllCheckbox");
+      selectAllCheckbox.addEventListener("change", () => {
+        rejectedChangeUids = selectAllCheckbox.checked ? new Set() : new Set(review.changes.map(c => c.uid));
+        els.autoSortReviewChanges.querySelectorAll(".sortReviewRowCheckbox").forEach(cb => {
+          cb.checked = selectAllCheckbox.checked;
+        });
+        updateApplyButtonLabel(review.changes.length);
+        applyAutoSortReviewMarkers(review);
+      });
+
+      const groupedChanges = new Map();
+      review.changes.forEach(change => {
+        const key = change.dataId || "unknown";
+        if (!groupedChanges.has(key)) groupedChanges.set(key, []);
+        groupedChanges.get(key).push(change);
+      });
+
+      const orderedGroupKeys = [
+        ...dataTypes.map(dataType => dataType.id).filter(id => groupedChanges.has(id)),
+        ...Array.from(groupedChanges.keys()).filter(id => !dataTypes.some(dataType => dataType.id === id))
+      ];
+
+      let globalIndex = 0;
+      orderedGroupKeys.forEach(dataId => {
+        const groupChanges = groupedChanges.get(dataId);
+        const dataType = getDataType(dataId);
+        const group = document.createElement("section");
+        group.className = "sortReviewDataTypeGroup";
+        group.dataset.dataId = dataId;
+
+        const header = document.createElement("div");
+        header.className = "sortReviewDataTypeHeader";
+        const dot = document.createElement("span");
+        dot.className = "sortReviewDataTypeDot";
+        dot.style.backgroundColor = dataType ? dataType.color : (groupChanges[0].dataTypeColor || "#667085");
+        const name = document.createElement("strong");
+        name.textContent = dataType ? dataType.name : (groupChanges[0].dataTypeName || "Data");
+        const count = document.createElement("small");
+        count.textContent = `${groupChanges.length} change${groupChanges.length === 1 ? "" : "s"}`;
+        header.append(dot, name, count);
+        group.appendChild(header);
+
+        const rows = document.createElement("div");
+        rows.className = "sortReviewDataTypeRows";
+        groupChanges.forEach(change => {
+          globalIndex += 1;
+          const row = document.createElement("div");
+          row.className = "sortReviewRow";
+          row.dataset.reviewUid = change.uid;
+          const beforeCode = formatReviewCode(change.beforeSide || change.side, change.beforeSeq);
+          const afterCode = formatReviewCode(change.afterSide || change.side, change.afterSeq);
+          row.innerHTML = `<label class="sortReviewRowCheckboxWrap"><input type="checkbox" class="sortReviewRowCheckbox" checked></label><span class="sortReviewRowIndex">${globalIndex}</span><button type="button" class="sortReviewRowBody"><strong>${escapeHTML(beforeCode)} <i>→</i> ${escapeHTML(afterCode)}</strong><small>Click to locate this point</small></button><span class="sortReviewLocate">Locate</span>`;
+          const checkbox = row.querySelector(".sortReviewRowCheckbox");
+          checkbox.addEventListener("change", () => {
+            if (checkbox.checked) rejectedChangeUids.delete(change.uid);
+            else rejectedChangeUids.add(change.uid);
+            row.classList.toggle("rowRejected", !checkbox.checked);
+            if (selectAllCheckbox) selectAllCheckbox.checked = rejectedChangeUids.size === 0;
+            updateApplyButtonLabel(review.changes.length);
+            applyAutoSortReviewMarkers(review);
+          });
+          row.querySelector(".sortReviewRowBody").addEventListener("click", () => focusReviewPoint(change.uid, row));
+          rows.appendChild(row);
+        });
+        group.appendChild(rows);
+        els.autoSortReviewChanges.appendChild(group);
+      });
+    }
+
+    renderAutoSortReviewFilters(review);
+
+    els.autoSortReviewWarnings.innerHTML = review.warnings.length ? "" : '<div class="sortReviewEmpty success"><span>✓</span><strong>No geometric warnings detected.</strong></div>';
+    if (review.warnings.length) {
+      const groupedWarnings = new Map();
+      review.warnings.forEach(warning => {
+        const key = warning.dataId || "unknown";
+        if (!groupedWarnings.has(key)) groupedWarnings.set(key, []);
+        groupedWarnings.get(key).push(warning);
+      });
+
+      const orderedWarningKeys = [
+        ...dataTypes.map(dataType => dataType.id).filter(id => groupedWarnings.has(id)),
+        ...Array.from(groupedWarnings.keys()).filter(id => !dataTypes.some(dataType => dataType.id === id))
+      ];
+
+      orderedWarningKeys.forEach(dataId => {
+        const groupWarnings = groupedWarnings.get(dataId);
+        const dataType = getDataType(dataId);
+        const group = document.createElement("section");
+        group.className = "sortReviewDataTypeGroup";
+        group.dataset.dataId = dataId;
+
+        const header = document.createElement("div");
+        header.className = "sortReviewDataTypeHeader";
+        const dot = document.createElement("span");
+        dot.className = "sortReviewDataTypeDot";
+        dot.style.backgroundColor = dataType ? dataType.color : (groupWarnings[0].dataTypeColor || "#667085");
+        const name = document.createElement("strong");
+        name.textContent = dataType ? dataType.name : (groupWarnings[0].dataTypeName || "Data");
+        const count = document.createElement("small");
+        count.textContent = `${groupWarnings.length} warning${groupWarnings.length === 1 ? "" : "s"}`;
+        header.append(dot, name, count);
+        group.appendChild(header);
+
+        const rows = document.createElement("div");
+        rows.className = "sortReviewDataTypeRows";
+        groupWarnings.forEach(warning => rows.appendChild(buildWarningRow(warning)));
+        group.appendChild(rows);
+
+        els.autoSortReviewWarnings.appendChild(group);
+      });
+    }
+
+    applyAutoSortReviewFilter();
+
+    els.autoSortReviewModal.classList.remove("hidden");
+    document.body.classList.add("sortReviewOpen");
+    applyAutoSortReviewMarkers(review);
+
+    // Measure the panel now that it's actually rendered, and reserve that
+    // much extra scroll room (plus a small margin) so any point can still
+    // be scrolled fully clear of it.
+    const card = els.autoSortReviewModal.querySelector(".autoSortReviewCard");
+    setReviewExtraScrollRoom(card ? Math.ceil(card.getBoundingClientRect().width) + 40 : 0);
+  }
+
+  function cancelPendingAutoSortReview() {
+    clearAutoSortReviewMarkers();
+    pendingAutoSortReview = null;
+    autoSortReviewFilter = "all";
+    rejectedChangeUids = new Set();
+    document.body.classList.remove("sortReviewOpen");
+    if (els.autoSortReviewModal) els.autoSortReviewModal.classList.add("hidden");
+    setReviewExtraScrollRoom(0);
+    setStatus("Auto Sort cancelled. No changes were applied.");
+  }
+
+  /*
+    Builds the final point order for one (data type, side) group when some
+    individual number changes have been rejected in the review list.
+
+    Rejected points act as fixed anchors that stay at their ORIGINAL
+    position. Between two consecutive anchors (and before the first/after
+    the last), the accepted points are re-ordered to match Auto Sort's
+    proposed new relative order — but they can't cross past an anchor into
+    a different gap. This keeps a rejected point's number exactly as it
+    was, while everything else resequences sensibly around it, and reduces
+    cleanly to "just use the new order" when nothing is rejected.
+  */
+  function buildPartialOrder(beforeList, afterList, rejectedUidSet) {
+    if (!rejectedUidSet || rejectedUidSet.size === 0) return afterList.slice();
+
+    const afterRank = new Map(afterList.map((entry, index) => [entry.uid, index]));
+    const result = [];
+    let bucket = [];
+
+    const flushBucket = () => {
+      bucket.sort((a, b) => (afterRank.get(a.uid) ?? 0) - (afterRank.get(b.uid) ?? 0));
+      result.push(...bucket);
+      bucket = [];
+    };
+
+    beforeList.forEach(entry => {
+      if (rejectedUidSet.has(entry.uid)) {
+        flushBucket();
+        result.push(entry);
+      } else {
+        bucket.push(entry);
+      }
+    });
+    flushBucket();
+
+    return result;
+  }
+
+  function applyPendingAutoSortReview() {
+    const pending = pendingAutoSortReview;
+    if (!pending) return;
+
+    // Every (data type, side) group that had at least one proposed change,
+    // so we know which groups need (possibly partial) resequencing.
+    const groups = new Map();
+    pending.review.changes.forEach(change => {
+      const key = `${change.dataId}::${change.side}`;
+      if (!groups.has(key)) groups.set(key, { dataId: change.dataId, side: change.side });
+    });
+
+    groups.forEach(({ dataId, side }) => {
+      const beforeSnap = pending.before[dataId];
+      const afterSnap = pending.after[dataId];
+      if (!beforeSnap || !afterSnap) return;
+
+      const beforeSideList = beforeSnap.points
+        .filter(p => p.assignedSide === side && !p.excluded)
+        .slice()
+        .sort((a, b) => (a.manualSeq || 0) - (b.manualSeq || 0));
+      const afterSideList = afterSnap.points
+        .filter(p => p.assignedSide === side && !p.excluded)
+        .slice()
+        .sort((a, b) => (a.manualSeq || 0) - (b.manualSeq || 0));
+
+      const finalOrder = buildPartialOrder(beforeSideList, afterSideList, rejectedChangeUids);
+      finalOrder.forEach((entry, index) => {
+        const livePoint = points.find(p => p.uid === entry.uid);
+        if (livePoint) livePoint.manualSeq = index + 1;
+      });
+    });
+
+    pending.targetDataTypes.forEach(dataId => {
+      const dataType = getDataType(dataId);
+      const afterSnap = pending.after[dataId];
+      if (dataType && afterSnap && Array.isArray(afterSnap.lockedSides)) {
+        dataType.lockedSides = afterSnap.lockedSides.slice();
+      }
+      recalculateDataTypeOrder(dataId);
+    });
+
+    // Snapshot the ACTUAL resulting state (reflecting any rejected points)
+    // for the undo record, rather than reusing Auto Sort's full proposed
+    // "after" — otherwise undo/redo would silently discard the rejections.
+    const finalAfterSnapshots = {};
+    pending.targetDataTypes.forEach(dataId => { finalAfterSnapshots[dataId] = snapshotOrder(dataId); });
+    pushUndo({ type: "reorderBatch", before: pending.before, after: finalAfterSnapshots });
+
+    refreshAllPoints();
+    renderDataSelect(currentDataId());
+    clearAutoSortReviewMarkers();
+
+    const rejectedCount = rejectedChangeUids.size;
+    pendingAutoSortReview = null;
+    autoSortReviewFilter = "all";
+    rejectedChangeUids = new Set();
+    document.body.classList.remove("sortReviewOpen");
+    if (els.autoSortReviewModal) els.autoSortReviewModal.classList.add("hidden");
+    setReviewExtraScrollRoom(0);
+    setStatus(rejectedCount > 0
+      ? `Auto Sort applied — kept ${rejectedCount} point${rejectedCount === 1 ? "" : "s"} unchanged. Side assignments were not changed.`
+      : "Auto Sort applied. Side assignments were not changed.");
+    scheduleAutoSave();
+  }
+
+
   function openAutoSortModal() {
     if (!els.autoSortModal) return;
 
@@ -2408,13 +3123,31 @@ const Workspace = (() => {
       choice.checked = choice.value === lastAutoSortMethod;
     });
 
+    hideAutoSortNoDataMessage();
+
     els.autoSortModal.classList.remove("hidden");
+  }
+
+  function showAutoSortNoDataMessage(text) {
+    if (!els.autoSortNoDataMessage) return;
+    els.autoSortNoDataMessage.textContent = text;
+    els.autoSortNoDataMessage.classList.remove("hidden");
+  }
+
+  function hideAutoSortNoDataMessage() {
+    if (!els.autoSortNoDataMessage) return;
+    els.autoSortNoDataMessage.classList.add("hidden");
   }
 
   function closeAutoSortModal() {
     if (els.autoSortModal) els.autoSortModal.classList.add("hidden");
   }
 
+  // Auto Sort no longer applies immediately: it computes the new order,
+  // silently reverts it, and shows an Auto Sort Review dialog listing every
+  // point whose visible Side+number would change plus any geometric
+  // warnings. The change is only committed (as a single Undo/Redo action)
+  // if the operator presses "Apply Auto Sort".
   function confirmAutoSort() {
     const dataSelection = els.autoSortDataType.value;
     const sideSelection = els.autoSortSide.value;
@@ -2424,25 +3157,42 @@ const Workspace = (() => {
     const method = selectedMethod ? selectedMethod.value : "position";
     const targetDataTypes = dataSelection === "__all__" ? dataTypes.slice() : [getDataType(dataSelection)].filter(Boolean);
     const targetSides = sideSelection === "__all__" ? ["N", "E", "S", "W"] : [sideSelection];
-    if (!targetDataTypes.length) { setStatus("Choose a valid data type."); return; }
+    if (!targetDataTypes.length) {
+      showAutoSortNoDataMessage("Choose a valid data type.");
+      setStatus("Choose a valid data type.");
+      return;
+    }
     const targets = [];
-    targetDataTypes.forEach(dt => targetSides.forEach(side => { if (pointsInSide(dt.id, side).length) targets.push({dt, side}); }));
-    if (!targets.length) { setStatus("No matching assigned points to sort."); return; }
+    targetDataTypes.forEach(dt => targetSides.forEach(side => { if (pointsInSide(dt.id, side).length) targets.push({ dt, side }); }));
+    if (!targets.length) {
+      const typeLabel = dataSelection === "__all__" ? "any data type" : (targetDataTypes[0] ? targetDataTypes[0].name : "this data type");
+      const sideLabel = sideSelection === "__all__" ? "any side" : sideDisplayLabel(sideSelection);
+      showAutoSortNoDataMessage(`No data: there are no assigned points for ${typeLabel} on ${sideLabel}.`);
+      setStatus("No matching assigned points to sort.");
+      return;
+    }
+    hideAutoSortNoDataMessage();
+
     closeAutoSortModal();
-    setStatus("Sorting…");
-    lastAutoSortDataId = dataSelection; lastAutoSortSide = sideSelection; lastAutoSortDirection = direction; lastAutoSortMethod = method;
-    const before = {}; targetDataTypes.forEach(dt => { before[dt.id] = snapshotOrder(dt.id); });
-    targets.forEach(({dt, side}) => autoSortSide(dt.id, side, direction, method));
+    lastAutoSortDataId = dataSelection;
+    lastAutoSortSide = sideSelection;
+    lastAutoSortDirection = direction;
+    lastAutoSortMethod = method;
+
+    const before = {};
+    targetDataTypes.forEach(dt => { before[dt.id] = snapshotOrder(dt.id); });
+    targets.forEach(({ dt, side }) => autoSortSide(dt.id, side, direction, method));
     targetDataTypes.forEach(dt => { dt.direction = direction; recalculateDataTypeOrder(dt.id); });
-    const after = {}; targetDataTypes.forEach(dt => { after[dt.id] = snapshotOrder(dt.id); });
-    pushUndo({ type: "reorderBatch", before, after });
-    refreshAllPoints(); renderDataSelect(currentDataId());
-    const typeLabel = dataSelection === "__all__" ? "all data types" : targetDataTypes[0].name;
-    const sideLabel = sideSelection === "__all__" ? "all sides" : sideSelection;
-    const methodLabel = method === "angle" ? "by angle" : "by position";
-    setStatus(`Auto-sorted ${typeLabel} · ${sideLabel} · ${methodLabel} · ${direction === "clockwise" ? "clockwise" : "counterclockwise"}.`);
-    scheduleAutoSave();
+    const after = {};
+    targetDataTypes.forEach(dt => { after[dt.id] = snapshotOrder(dt.id); });
+
+    const review = buildCompassSortReview(targetDataTypes, targets, before, after, direction);
+    targetDataTypes.forEach(dt => restoreOrder(dt.id, before[dt.id]));
+
+    pendingAutoSortReview = { before, after, targetDataTypes: targetDataTypes.map(dt => dt.id), review };
+    openAutoSortReview(review);
   }
+
 
   function openSetPosition(point) {
     setPositionPoint = point;
@@ -4290,6 +5040,24 @@ const Workspace = (() => {
       x: (event.clientX - rect.left) / zoomLevel,
       y: (event.clientY - rect.top) / zoomLevel
     };
+  }
+
+  // This build doesn't have custom per-side labels (that's a separate
+  // feature), so the display label for a side is just the side itself.
+  // Kept as a function so the Auto Sort Review code below reads the same
+  // as upstream and stays easy to diff against future updates.
+  function sideDisplayLabel(side) {
+    return side;
+  }
+
+  function escapeHTML(value) {
+    return String(value ?? "").replace(/[&<>"']/g, char => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    }[char]));
   }
 
   function getDataType(id) {

@@ -317,9 +317,53 @@
         </label>
       </fieldset>
 
+      <p id="autoSortNoDataMessage" class="autoSortNoDataMessage hidden"></p>
+
       <div class="modalActions">
         <button id="cancelAutoSortBtn" type="button">Cancel</button>
         <button id="confirmAutoSortBtn" class="primaryButton" type="button">Sort</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="autoSortReviewModal" class="modalBackdrop sortReviewBackdrop hidden">
+    <div class="modalCard autoSortReviewCard" role="dialog" aria-modal="true" aria-label="Auto Sort Review">
+      <header class="sortReviewHeader">
+        <div class="sortReviewHeaderIcon" aria-hidden="true">✓</div>
+        <div id="autoSortReviewSummary" class="autoSortReviewSummary"></div>
+      </header>
+
+      <div class="sortReviewGuide">
+        <span class="sortReviewGuideIcon">⌖</span>
+        <span>Select a change or warning to centre its point, then flash it in place. The number label stays attached to its original drawing position. Review markers are temporary and will not appear in exports.</span>
+      </div>
+
+      <section class="sortReviewSection">
+        <div class="sortReviewSectionHeader">
+          <div>
+            <span class="sortReviewEyebrow">ORDER REVIEW</span>
+            <h3>Number changes</h3>
+          </div>
+          <button id="toggleSortReviewChangesBtn" class="sortReviewToggle active" type="button" aria-pressed="true">Show on drawing</button>
+        </div>
+        <div id="autoSortReviewFilters" class="sortReviewFilterBar hidden" aria-label="Filter number changes by data type"></div>
+        <div id="autoSortReviewChanges" class="sortReviewList"></div>
+      </section>
+
+      <section class="sortReviewSection">
+        <div class="sortReviewSectionHeader">
+          <div>
+            <span class="sortReviewEyebrow warning">MANUAL CHECK</span>
+            <h3>Warnings</h3>
+          </div>
+          <button id="toggleSortReviewWarningsBtn" class="sortReviewToggle active" type="button" aria-pressed="true">Show on drawing</button>
+        </div>
+        <div id="autoSortReviewWarnings" class="sortReviewList"></div>
+      </section>
+
+      <div class="modalActions stickyReviewActions">
+        <button id="cancelAutoSortReviewBtn" class="sortReviewCancelBtn" type="button">Cancel</button>
+        <button id="applyAutoSortReviewBtn" class="primaryButton sortReviewApplyBtn" type="button">Apply Auto Sort</button>
       </div>
     </div>
   </div>
